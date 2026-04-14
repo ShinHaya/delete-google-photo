@@ -1,0 +1,498 @@
+- generic [active] [ref=e1]:
+  - region "www.google.com では、サービスの提供および品質向上とトラフィックの分析に Cookie が使用されています。同意すると、広告の配信や、表示されるコンテンツと広告のパーソナライズにも Cookie が使用されます。" [ref=e2]:
+    - paragraph [ref=e3]:
+      - text: www.google.com では、サービスの提供および品質向上とトラフィックの分析に Cookie が使用されています。同意すると、広告の配信や、表示されるコンテンツと広告のパーソナライズにも Cookie が使用されます。
+      - link "詳しくは、Google による Cookie の使用についての説明をご覧ください。 新しいタブで開きます。" [ref=e4] [cursor=pointer]:
+        - /url: https://policies.google.com/technologies/cookies?hl=ja
+        - text: 詳細
+    - button "同意する" [ref=e5] [cursor=pointer]
+    - button "同意しない" [ref=e6] [cursor=pointer]
+  - generic [ref=e7]:
+    - banner [ref=e8]:
+      - link "Skip to main content" [ref=e9] [cursor=pointer]:
+        - /url: "#main"
+      - generic [ref=e10]:
+        - link "Visit the Google Photos overview page" [ref=e11] [cursor=pointer]:
+          - /url: /intl/ja/photos/about/
+          - img [ref=e12]
+        - navigation [ref=e35]:
+          - list [ref=e36]:
+            - listitem [ref=e37]:
+              - link "Visit the Google Photos overview page" [ref=e38] [cursor=pointer]:
+                - /url: /intl/ja/photos/about/
+                - text: 概要
+            - listitem [ref=e39]:
+              - link "Visit the photo editing page" [ref=e40] [cursor=pointer]:
+                - /url: /intl/ja/photos/editing/
+                - text: 写真の編集
+        - generic [ref=e42]:
+          - link "Google フォトにアクセス" [ref=e43] [cursor=pointer]:
+            - /url: https://photos.google.com/login
+            - generic [ref=e44]: Google フォトにアクセス
+          - link "Download the Google Photos app" [ref=e45] [cursor=pointer]:
+            - /url: /intl/ja/photos/download/
+            - generic [ref=e46]: アプリをインストール
+    - main [ref=e47]:
+      - 'region "Google Photos makes {editing, organization, search, and photos} feel like magic." [ref=e48]':
+        - generic [ref=e49]:
+          - generic [ref=e50]:
+            - img "Google Photos logo" [ref=e52]
+            - heading "魔法のような 編集 整理 検索 写真" [level=1] [ref=e53]:
+              - text: 魔法のような
+              - list [ref=e54]:
+                - listitem [ref=e55]:
+                  - strong [ref=e57]: 編集
+                - listitem:
+                  - generic:
+                    - strong: 整理
+                - listitem:
+                  - generic:
+                    - strong: 検索
+                - listitem:
+                  - generic:
+                    - strong: 写真
+          - generic [ref=e58]:
+            - generic "An animation showcasing various features of the Google Photos app." [ref=e60]
+            - button "Play video" [ref=e61] [cursor=pointer]:
+              - img [ref=e62]
+              - img [ref=e64]
+              - img [ref=e67]
+      - separator [ref=e69]
+      - navigation "Jump to section" [ref=e70]:
+        - list [ref=e72]:
+          - listitem [ref=e73]:
+            - 'link "Go to section: Create" [ref=e74] [cursor=pointer]':
+              - /url: "#create"
+              - text: 作成
+          - listitem [ref=e75]:
+            - 'link "Go to section: Search" [ref=e76] [cursor=pointer]':
+              - /url: "#search"
+              - text: 検索
+          - listitem [ref=e77]:
+            - 'link "Go to section: Edit" [ref=e78] [cursor=pointer]':
+              - /url: "#edit"
+              - text: 編集
+          - listitem [ref=e79]:
+            - 'link "Go to section: Organize" [ref=e80] [cursor=pointer]':
+              - /url: "#organize"
+              - text: 整理
+          - listitem [ref=e81]:
+            - 'link "Go to section: Share" [ref=e82] [cursor=pointer]':
+              - /url: "#share"
+              - text: 共有
+          - listitem [ref=e83]:
+            - 'link "Go to section: Safety" [ref=e84] [cursor=pointer]':
+              - /url: "#safety"
+              - text: 安全性
+      - separator [ref=e85]
+      - generic [ref=e87]:
+        - generic [ref=e89]:
+          - heading "クリエイティブの新しい作成方法が登場" [level=2] [ref=e90]
+          - paragraph [ref=e92]:
+            - text: Explore the Create tab — your new home for creativity in the Google Photos app. Turn your favorite moments into stylized collages, stunning highlight videos, animations, and more.
+            - superscript [ref=e93]:
+              - link "Show footnote 1" [ref=e94] [cursor=pointer]:
+                - /url: "#footnote:create"
+                - text: "1"
+          - link "今すぐ作成" [ref=e96] [cursor=pointer]:
+            - /url: /photos/download/
+            - generic [ref=e97]: 今すぐ作成
+        - separator [ref=e98]
+        - generic [ref=e104]:
+          - generic "Video showing the \"Create\" tab in the Google Photos app." [ref=e105]
+          - 'button "Play video: Video showing the \"Create\" tab in the Google Photos app." [ref=e106] [cursor=pointer]':
+            - img [ref=e107]
+            - img [ref=e109]
+            - img [ref=e112]
+      - separator [ref=e114]
+      - generic [ref=e116]:
+        - heading "思い出をさらに楽しく" [level=2] [ref=e119]
+        - separator [ref=e120]
+        - generic [ref=e123]:
+          - generic [ref=e126]:
+            - generic [ref=e127]:
+              - generic [ref=e128]:
+                - generic "Video" [ref=e131]
+                - generic [ref=e132]:
+                  - heading "15 GB の保存容量 Show footnote 2" [level=3] [ref=e133]:
+                    - text: 15 GB の保存容量
+                    - superscript [ref=e134]:
+                      - link "Show footnote 2" [ref=e135] [cursor=pointer]:
+                        - /url: "#footnote:google_account_storage"
+                        - text: "2"
+                  - paragraph [ref=e137]: これは、他社のクラウド ストレージ サービスの 3 倍の容量です。
+                  - link "Explore Google One storage plans" [ref=e139] [cursor=pointer]:
+                    - /url: https://one.google.com/about/plans
+                    - generic [ref=e140]: さらに多くの機能を利用可能に
+                    - img [ref=e142]
+              - button "Show back of card" [ref=e144] [cursor=pointer]:
+                - img [ref=e145]
+            - generic [ref=e147]:
+              - generic [ref=e148]:
+                - img "Cloud icon with a checkbox" [ref=e151]
+                - generic [ref=e152]:
+                  - heading "保存容量は 15 GB もあるため、無料で思い出を自動的にバックアップして安全に保管できます。Show footnote 2" [level=3] [ref=e153]:
+                    - text: 保存容量は 15 GB もあるため、無料で思い出を自動的にバックアップして安全に保管できます。
+                    - superscript [ref=e154]:
+                      - link "Show footnote 2" [ref=e155] [cursor=pointer]:
+                        - /url: "#footnote:google_account_storage"
+                        - text: "2"
+                  - list [ref=e156]:
+                    - listitem [ref=e157]:
+                      - link "Explore Google One plans" [ref=e158] [cursor=pointer]:
+                        - /url: https://one.google.com/about/plans
+                        - generic [ref=e159]: Google One でさらに多くの機能と特典が利用可能に
+                        - img [ref=e161]
+              - button "Show front of card" [ref=e163] [cursor=pointer]:
+                - img [ref=e164]
+          - generic [ref=e168]:
+            - generic [ref=e169]:
+              - generic [ref=e170]:
+                - generic "Video" [ref=e173]
+                - generic [ref=e174]:
+                  - heading "AI を活用したツール" [level=3] [ref=e175]
+                  - paragraph [ref=e177]: 編集、整理、検索など。
+              - button "Show back of card" [ref=e178] [cursor=pointer]:
+                - img [ref=e179]
+            - generic [ref=e181]:
+              - generic [ref=e182]:
+                - img "Wand icon with sparkles" [ref=e185]
+                - heading "写真の補正、手軽な検索、自動の整理で Google AI が活躍します。" [level=3] [ref=e187]
+              - button "Show front of card" [ref=e188] [cursor=pointer]:
+                - img [ref=e189]
+        - separator [ref=e191]
+        - generic [ref=e196]:
+          - generic [ref=e197]:
+            - heading "iPhone®Show footnote 3にも対応。" [level=2] [ref=e198]:
+              - text: iPhone
+              - superscript [ref=e199]: ®
+              - superscript [ref=e200]:
+                - link "Show footnote 3" [ref=e201] [cursor=pointer]:
+                  - /url: "#footnote:iphone_trademark"
+                  - text: "3"
+              - text: にも対応。
+            - paragraph [ref=e203]: Google フォトでは、セットアップ時にライブラリとお気に入りを同期することで、写真がアプリに自動的にアップロードされます。
+          - link "Download on the App Store" [ref=e206] [cursor=pointer]:
+            - /url: /photos/download/
+            - img "Download on the App Store" [ref=e208]
+      - separator [ref=e209]
+      - region "検索がシンプルに" [ref=e210]:
+        - heading "検索がシンプルに" [level=2] [ref=e213]
+        - separator [ref=e214]
+        - generic [ref=e218]:
+          - generic:
+            - generic [ref=e219]:
+              - generic [ref=e220]:
+                - generic [ref=e221]:
+                  - heading "で、思い出を簡単に検索" [level=3] [ref=e222]:
+                    - generic [ref=e223]: で、思い出を簡単に検索
+                  - generic [ref=e225]:
+                    - img [ref=e226]
+                    - paragraph [ref=e228]
+                - generic "A user searching Photos for a person named Lindsay." [ref=e231]
+              - generic [ref=e232]:
+                - generic [ref=e233]:
+                  - heading "で、思い出を簡単に検索" [level=3] [ref=e234]:
+                    - generic [ref=e235]: で、思い出を簡単に検索
+                  - generic [ref=e237]:
+                    - img [ref=e238]
+                    - paragraph [ref=e240]
+                - generic "A user searching Photos for pictures taken in San Francisco." [ref=e243]
+              - generic [ref=e244]:
+                - generic [ref=e245]:
+                  - heading "で、思い出を簡単に検索" [level=3] [ref=e246]:
+                    - generic [ref=e247]: で、思い出を簡単に検索
+                  - generic [ref=e249]:
+                    - img [ref=e250]
+                    - paragraph [ref=e252]
+                - generic "A user searching Photos for pictures of pizza using an emoji." [ref=e255]
+              - generic [ref=e256]:
+                - button "Play":
+                  - img
+                - button "Pause" [ref=e257] [cursor=pointer]:
+                  - img [ref=e258]
+            - generic [ref=e261]:
+              - generic:
+                - button "Go to slide 1" [ref=e262] [cursor=pointer]
+                - button "Go to slide 2" [ref=e263] [cursor=pointer]
+                - button "Go to slide 3" [ref=e264] [cursor=pointer]
+              - generic [ref=e265]:
+                - button "Go to Previous Slide" [ref=e266] [cursor=pointer]:
+                  - img [ref=e267]
+                - button "Go to Next Slide" [ref=e269] [cursor=pointer]:
+                  - img [ref=e270]
+      - separator [ref=e272]
+      - region "Google AI で補正された写真" [ref=e273]:
+        - generic [ref=e274]:
+          - img "Wand with sparkles" [ref=e276]
+          - heading "Google AI で補正された写真" [level=2] [ref=e278]
+        - separator [ref=e279]
+        - generic [ref=e281]:
+          - generic [ref=e285]:
+            - generic "Video" [ref=e286]
+            - 'button "Play video: Video" [ref=e287] [cursor=pointer]':
+              - img [ref=e288]
+              - img [ref=e290]
+              - img [ref=e293]
+          - generic [ref=e295]:
+            - generic [ref=e296]:
+              - heading "編集マジック" [level=2] [ref=e297]
+              - heading "数回タップするだけで、複雑な編集作業が簡単に。" [level=3] [ref=e298]:
+                - generic [ref=e299]: 数回タップするだけで、複雑な編集作業が簡単に。
+            - list [ref=e300]:
+              - listitem [ref=e301]:
+                - link "Explore the Magic Editor feature in Google Photos" [ref=e302] [cursor=pointer]:
+                  - /url: /intl/ja/photos/editing#magic-editor
+                  - generic [ref=e303]: 詳細
+                  - img [ref=e305]
+        - separator [ref=e307]
+        - generic [ref=e309]:
+          - generic [ref=e313]:
+            - generic "Video" [ref=e314]
+            - 'button "Play video: Video" [ref=e315] [cursor=pointer]':
+              - img [ref=e316]
+              - img [ref=e318]
+              - img [ref=e321]
+          - generic [ref=e323]:
+            - generic [ref=e324]:
+              - heading "消しゴムマジック" [level=2] [ref=e325]
+              - heading "不要な写り込みで写真が台無しになる心配がありません。" [level=3] [ref=e326]:
+                - generic [ref=e327]: 不要な写り込みで写真が台無しになる心配がありません。
+            - list [ref=e328]:
+              - listitem [ref=e329]:
+                - link "Explore the Magic Eraser feature in Google Photos" [ref=e330] [cursor=pointer]:
+                  - /url: /intl/ja/photos/editing#magic-eraser
+                  - generic [ref=e331]: 詳細
+                  - img [ref=e333]
+        - separator [ref=e335]
+        - generic [ref=e337]:
+          - generic [ref=e342]:
+            - figure [ref=e343]
+            - slider "Drag the slider to compare the two images." [ref=e345]: "58"
+          - generic [ref=e346]:
+            - generic [ref=e347]:
+              - heading "ボケ補正" [level=2] [ref=e348]
+              - heading "ぼやけた写真も鮮明に。" [level=3] [ref=e349]:
+                - generic [ref=e350]: ぼやけた写真も鮮明に。
+            - list [ref=e351]:
+              - listitem [ref=e352]:
+                - link "Explore the Photo Unblur feature in Google Photos" [ref=e353] [cursor=pointer]:
+                  - /url: /intl/ja/photos/editing#photo-unblur
+                  - generic [ref=e354]: 詳細
+                  - img [ref=e356]
+        - separator [ref=e358]
+        - link "Explore all Google Photos editing features" [ref=e360] [cursor=pointer]:
+          - /url: /intl/ja/photos/editing/
+          - generic [ref=e361]: すべての編集機能を見る
+      - separator [ref=e362]
+      - generic [ref=e364]:
+        - generic [ref=e366]:
+          - heading "思い出をたどりましょう" [level=2] [ref=e367]
+          - paragraph [ref=e369]: お気に入りの思い出を簡単に振り返りましょう。機械学習により、ベストショットが自動的に選ばれるので、その瞬間に映っている人たちとすぐに共有できます。
+        - separator [ref=e370]
+        - generic [ref=e376]:
+          - generic "The Memories View feature showcasing a trip to Trinity Alps." [ref=e377]
+          - 'button "Play video: The Memories View feature showcasing a trip to Trinity Alps." [ref=e378] [cursor=pointer]':
+            - img [ref=e379]
+            - img [ref=e381]
+            - img [ref=e384]
+        - separator [ref=e386]
+        - generic [ref=e388]:
+          - heading "AI を活用して整理" [level=2] [ref=e389]
+          - paragraph [ref=e391]: 写真やドキュメントは自動的に整理されるため、思い出を整理する時間を減らし、楽しむ時間を増やすことができます。
+        - separator [ref=e392]
+        - generic [ref=e395]:
+          - generic [ref=e396]:
+            - img "Photo Stacks feature indicating 3 photos are stacked." [ref=e399]
+            - paragraph [ref=e400]: 似ている写真を自動でグループ化
+          - generic [ref=e401]:
+            - img "Documents tab showing the number of each type of document within the app." [ref=e404]
+            - paragraph [ref=e405]: ドキュメントは、スクリーンショット、領収書、メモなどのアルバムに分類されます。
+      - generic [ref=e407]:
+        - generic [ref=e408]:
+          - img "A couple smiling and hugging for a selfie." [ref=e409]
+          - generic [ref=e410]:
+            - heading "笑顔をもれなく共有" [level=2] [ref=e411]
+            - paragraph [ref=e413]: 連絡先の誰とでも、写真、動画、アルバムを簡単に共有できます。相手が Google フォトを使用していなくても問題ありません。
+        - separator [ref=e414]
+        - generic [ref=e417]:
+          - generic [ref=e418]:
+            - img "Message, photo and copy link icons." [ref=e421]
+            - generic [ref=e422]:
+              - heading "よく使うアプリと共有" [level=3] [ref=e423]
+              - paragraph [ref=e425]: Line などの毎日使うお気に入りのアプリで、アルバムや写真を友だちと共有できます。
+          - generic [ref=e426]:
+            - img "Icons indicating trusted users within the Google Photos app." [ref=e429]
+            - generic [ref=e430]:
+              - heading "信頼できる連絡先と共有" [level=3] [ref=e431]
+              - paragraph [ref=e433]: 選択した人物やペットの写真を、パートナーや最も信頼できる相手と自動的に共有できます。
+      - generic [ref=e435]:
+        - heading "思い出を安全に保存" [level=2] [ref=e438]
+        - separator [ref=e439]
+        - generic [ref=e441]:
+          - generic [ref=e445]:
+            - generic "Video" [ref=e446]
+            - 'button "Play video: Video" [ref=e447] [cursor=pointer]':
+              - img [ref=e448]
+              - img [ref=e450]
+              - img [ref=e453]
+          - generic [ref=e456]:
+            - heading "データはご自分で管理・所有" [level=2] [ref=e457]
+            - paragraph [ref=e459]: Google フォトに追加したコンテンツはすべてユーザーの所有物です。コンテンツはいつでも削除またはエクスポートできます。
+        - separator [ref=e460]
+        - generic [ref=e463]:
+          - generic [ref=e464]:
+            - img "Padlock icon indicating security." [ref=e467]
+            - generic [ref=e468]:
+              - heading "思い出を安全に保護" [level=3] [ref=e469]
+              - paragraph [ref=e471]: Google は、写真や動画を安全に保護するため、最高水準のセキュリティ インフラストラクチャを運用しています。
+          - generic [ref=e472]:
+            - img "A checkmark icon." [ref=e475]
+            - generic [ref=e476]:
+              - heading "データは広告に使用されない" [level=3] [ref=e477]
+              - paragraph [ref=e479]: Google が、Google フォトの写真、動画、個人情報を他者に販売することはありません。また、Google フォトの写真や動画を広告に使用することもありません。
+        - separator [ref=e480]
+        - link "Learn more about Google Photos security" [ref=e482] [cursor=pointer]:
+          - /url: "https://safety.google/intl/en_us/photos/ "
+          - generic [ref=e483]: 詳細
+      - separator [ref=e484]
+      - region "よくある質問" [ref=e485]:
+        - generic [ref=e486]:
+          - heading "よくある質問" [level=2] [ref=e488]
+          - generic [ref=e489]:
+            - button "写真や動画の保存容量はどれくらいですか？" [ref=e492] [cursor=pointer]: 写真や動画の保存容量はどれくらいですか？
+            - button "iOS デバイスで Google フォトを使用できますか？" [ref=e495] [cursor=pointer]: iOS デバイスで Google フォトを使用できますか？
+            - button "どうすれば写真や動画をバックアップできますか？" [ref=e498] [cursor=pointer]: どうすれば写真や動画をバックアップできますか？
+            - button "どうすれば写真を編集できますか？" [ref=e501] [cursor=pointer]: どうすれば写真を編集できますか？
+            - button "どうすれば写真を共有できますか？" [ref=e504] [cursor=pointer]: どうすれば写真を共有できますか？
+            - button "どうすれば写真を検索できますか？" [ref=e507] [cursor=pointer]: どうすれば写真を検索できますか？
+          - list [ref=e508]:
+            - listitem [ref=e509]:
+              - link "詳細" [ref=e510] [cursor=pointer]:
+                - /url: https://support.google.com/photos/
+                - generic [ref=e511]: 詳細
+      - separator [ref=e512]
+      - generic [ref=e518]:
+        - generic [ref=e519]:
+          - generic [ref=e520]:
+            - heading "Google フォトをダウンロード" [level=2] [ref=e521]
+            - paragraph [ref=e523]: すべてのデバイスで大切な思い出をバックアップ。
+          - generic [ref=e524]:
+            - link "Get it on Google Play" [ref=e526] [cursor=pointer]:
+              - /url: https://play.google.com/store/apps/details?id=com.google.android.apps.photos&referrer=utm_source%3Dmarketingsite%26utm_medium%3Dmarketingsite%26utm_campaign%3Dmarketingsite_new
+              - img "Get it on Google Play" [ref=e528]
+            - link "Download on the App Store" [ref=e530] [cursor=pointer]:
+              - /url: https://apps.apple.com/app/apple-store/id962194608?pt=9008&ct=marketingsite_new&mt=8
+              - img "Download on the App Store" [ref=e532]
+        - figure "Google フォトアプリをスキャン" [ref=e533]:
+          - img [ref=e535]
+          - generic [ref=e539]: Google フォトアプリをスキャン
+      - separator [ref=e540]
+      - complementary "Google フォト アプリをダウンロード" [ref=e541] [cursor=pointer]:
+        - generic [ref=e542]:
+          - button [expanded] [ref=e543]
+          - img [ref=e547]
+          - paragraph [ref=e552]: Google フォト アプリをダウンロード
+    - contentinfo [ref=e553]:
+      - generic [ref=e554]:
+        - generic [ref=e556]:
+          - heading "フォロー" [level=3] [ref=e557]
+          - list [ref=e558]:
+            - listitem [ref=e559]:
+              - link "X / Twitter" [ref=e560] [cursor=pointer]:
+                - /url: https://x.com/googlephotos
+                - img [ref=e561]
+            - listitem [ref=e563]:
+              - link "YouTube" [ref=e564] [cursor=pointer]:
+                - /url: https://www.youtube.com/googlephotos
+                - img [ref=e565]
+        - generic [ref=e568]:
+          - generic [ref=e569]:
+            - heading "Google フォトについて" [level=3] [ref=e570]
+            - list [ref=e571]:
+              - listitem [ref=e572]:
+                - link "概要" [ref=e573] [cursor=pointer]:
+                  - /url: /intl/ja/photos/about/
+              - listitem [ref=e574]:
+                - link "写真の編集" [ref=e575] [cursor=pointer]:
+                  - /url: /intl/ja/photos/editing/
+              - listitem [ref=e576]:
+                - link "Google フォトをダウンロード" [ref=e577] [cursor=pointer]:
+                  - /url: /intl/ja/photos/download/
+          - generic [ref=e578]:
+            - heading "参考情報" [level=3] [ref=e579]
+            - list [ref=e580]:
+              - listitem [ref=e581]:
+                - link "Google フォトと連携" [ref=e582] [cursor=pointer]:
+                  - /url: /intl/ja/photos/works-with/
+        - list "Footnotes" [ref=e585]:
+          - listitem [ref=e586]:
+            - generic [ref=e587]: "1"
+            - paragraph [ref=e589]: Available globally to users on Android and iOS. For users 13+. Latest Photos app version required for proper function.
+          - listitem [ref=e590]:
+            - generic [ref=e591]: "2"
+            - paragraph [ref=e593]: "* Google アカウントの保存容量は、Google フォト、Gmail、Google ドライブで共有されます。"
+          - listitem [ref=e594]:
+            - generic [ref=e595]: "3"
+            - paragraph [ref=e597]: iPhone は Apple Inc. の商標です。
+          - listitem [ref=e598]:
+            - generic [ref=e599]: "4"
+            - paragraph [ref=e601]: プリントは、米国、カナダ、EU、英国でのみご利用いただけます。
+      - generic [ref=e603]:
+        - img [ref=e605]
+        - list [ref=e608]:
+          - listitem [ref=e609]:
+            - link "About Google" [ref=e610] [cursor=pointer]:
+              - /url: https://about.google/
+              - generic [ref=e611]: About Google
+          - listitem [ref=e612]:
+            - link "Google products" [ref=e613] [cursor=pointer]:
+              - /url: https://about.google/products/?tip=conversions
+              - generic [ref=e614]: Google products
+          - listitem [ref=e615]:
+            - link "Privacy" [ref=e616] [cursor=pointer]:
+              - /url: https://policies.google.com/privacy
+              - generic [ref=e617]: Privacy
+          - listitem [ref=e618]:
+            - link "Terms" [ref=e619] [cursor=pointer]:
+              - /url: https://policies.google.com/terms
+              - generic [ref=e620]: Terms
+        - generic [ref=e621]:
+          - link "Help" [ref=e623] [cursor=pointer]:
+            - /url: https://support.google.com/photos/
+            - generic [ref=e624]: Help
+          - combobox "Select language" [ref=e625]:
+            - option "አማርኛ"
+            - option "العربية"
+            - option "বাংলা"
+            - option "dansk"
+            - option "Deutsch"
+            - option "Ελληνικά"
+            - option "English"
+            - option "English (United Kingdom)"
+            - option "español"
+            - option "suomi"
+            - option "français"
+            - option "हिन्दी"
+            - option "hrvatski"
+            - option "magyar"
+            - option "Indonesia"
+            - option "italiano"
+            - option "עברית"
+            - option "日本語" [selected]
+            - option "한국어"
+            - option "Melayu"
+            - option "Nederlands"
+            - option "norsk"
+            - option "português (Brasil)"
+            - option "português (Portugal)"
+            - option "සිංහල"
+            - option "slovenščina"
+            - option "svenska"
+            - option "Kiswahili"
+            - option "ไทย"
+            - option "Türkçe"
+            - option "Tiếng Việt"
+            - option "中文（中国）"
+            - option "中文（中國香港特別行政區）"
+            - option "中文（台灣）"

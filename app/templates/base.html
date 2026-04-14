@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token | default('') }}">
+    <title>{% block title %}Google Photos 削除ツール{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Google Photos 削除ツール</h1>
+            <div id="account-bar" class="account-bar" style="display: none;">
+                <div class="account-selector">
+                    <label for="account-dropdown">アカウント:</label>
+                    <select id="account-dropdown"></select>
+                    <button id="add-account-btn" class="btn btn-sm btn-primary">+ 追加</button>
+                    <button id="remove-account-btn" class="btn btn-sm btn-danger" style="display: none;">削除</button>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            {% block content %}{% endblock %}
+        </main>
+
+        <footer>
+            <p>注意: 削除した写真は復元できません。</p>
+        </footer>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

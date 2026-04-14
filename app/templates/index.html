@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="app">
+    <!-- Authentication Status -->
+    <section id="auth-section" class="auth-section">
+        <h2>認証状態</h2>
+        <div id="auth-status" class="auth-status">
+            <span id="auth-indicator" class="indicator checking"></span>
+            <span id="auth-text">確認中...</span>
+        </div>
+        <div id="auth-actions" class="auth-actions" style="display: none;">
+            <p>Google Photosにアクセスするには認証が必要です。</p>
+            <p>「ログイン」ボタンをクリックすると、ブラウザが開きます。</p>
+            <button id="login-btn" class="btn btn-primary">Googleでログイン</button>
+        </div>
+        <div id="auth-logged-in" class="auth-logged-in" style="display: none;">
+            <button id="logout-btn" class="btn btn-secondary">ログアウト</button>
+        </div>
+    </section>
+
+    <!-- Interrupted Session Alert -->
+    <div id="interrupted-alert" class="alert alert-warning" style="display: none;">
+        <h3>中断されたセッションがあります</h3>
+        <p id="interrupted-info"></p>
+        <div class="button-group">
+            <button id="resume-btn" class="btn btn-primary">再開する</button>
+            <button id="cancel-session-btn" class="btn btn-secondary">キャンセル</button>
+        </div>
+    </div>
+
+    <!-- Date Range Form -->
+    <section class="form-section">
+        <h2>日付範囲を指定</h2>
+        <form id="date-form">
+            <div class="form-group">
+                <label for="start-date">開始日:</label>
+                <input type="date" id="start-date" name="start_date" required>
+            </div>
+            <div class="form-group">
+                <label for="end-date">終了日:</label>
+                <input type="date" id="end-date" name="end_date" required>
+            </div>
+            <div class="button-group">
+                <button type="button" id="dry-run-btn" class="btn btn-secondary">
+                    ドライラン
+                </button>
+                <button type="button" id="delete-btn" class="btn btn-danger" disabled>
+                    削除実行
+                </button>
+            </div>
+        </form>
+    </section>
+
+    <!-- Results Section -->
+    <section id="results-section" class="results-section" style="display: none;">
+        <h2>結果</h2>
+        <div id="dry-run-results" style="display: none;">
+            <p>削除対象: <span id="target-count" class="count">0</span> 枚</p>
+            <div id="photos-by-date"></div>
+        </div>
+    </section>
+
+    <!-- Progress Section -->
+    <section id="progress-section" class="progress-section" style="display: none;">
+        <h2>削除中...</h2>
+        <div class="progress-bar">
+            <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
+        </div>
+        <p class="progress-text">
+            進捗: <span id="processed-count">0</span> / <span id="total-count">0</span> 枚
+            (<span id="progress-percentage">0</span>%)
+        </p>
+        <button id="interrupt-btn" class="btn btn-warning">中断</button>
+    </section>
+
+    <!-- Status Section -->
+    <section class="status-section">
+        <div id="status-message" class="status">
+            ステータス: <span id="status-text">待機中</span>
+        </div>
+        <div id="error-message" class="error" style="display: none;"></div>
+    </section>
+</div>
+
+<!-- Confirmation Dialog -->
+<div id="confirm-dialog" class="modal" style="display: none;">
+    <div class="modal-content">
+        <h2>確認</h2>
+        <p id="confirm-message"></p>
+        <div class="button-group">
+            <button id="confirm-yes" class="btn btn-danger">はい、削除する</button>
+            <button id="confirm-no" class="btn btn-secondary">キャンセル</button>
+        </div>
+    </div>
+</div>
+
+<!-- Final Confirmation Dialog -->
+<div id="final-confirm-dialog" class="modal" style="display: none;">
+    <div class="modal-content">
+        <h2>最終確認</h2>
+        <p>この操作は取り消せません。本当に削除しますか？</p>
+        <div class="button-group">
+            <button id="final-confirm-yes" class="btn btn-danger">削除を実行</button>
+            <button id="final-confirm-no" class="btn btn-secondary">キャンセル</button>
+        </div>
+    </div>
+</div>
+{% endblock %}

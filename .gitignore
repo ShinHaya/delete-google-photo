@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Type checking
+.mypy_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Application State
+state/
+*.session
+
+# Browser State (Playwright)
+.delete-google-photo/
+
+# Docker
+.docker/
+
+# Nix
+result
+result-*
+
+# Logs
+*.log
+logs/
+
+# Coverage reports
+coverage.xml
+*.cover
+
+# Distribution
+dist/
+build/
+*.egg-info/
