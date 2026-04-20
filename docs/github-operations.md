@@ -176,16 +176,41 @@ GitHub Actions 自動化:
   - fork 由来の PR では起動しない
   - head ブランチが `codex/*` でない場合は起動しない
 
+@claude メンションの起動には PAT が必要:
+
+- GitHub Actions の仕様で、`GITHUB_TOKEN` が authored した PR コメントは
+  後続ワークフローを起動しない（recursion-prevention ルール）
+- `codex-code-review.yml` の `post-feedback` ジョブは `github-script` で
+  コメントを投稿しているため、既定の `GITHUB_TOKEN` のままでは
+  コメントが `github-actions[bot]` 名義となり、`claude.yml` の
+  `issue_comment` トリガーが発火しない
+- これを解決するため、`post-feedback` は secret `AI_REVIEW_TRIGGER_PAT`
+  を優先して使う。未設定時は `GITHUB_TOKEN` にフォールバックするので
+  コメント投稿自体は成功するが、`@claude` 自動修正は動かない
+- `@codex` メンションは claude-code-action が App (`claude[bot]`) として
+  投稿するため PAT なしでも `codex.yml` を起動できる（別問題として
+  actor 権限の扱いは Issue #101 で追う）
+
 必要な secret:
 
 - `ANTHROPIC_API_KEY`
 - `OPENAI_API_KEY`
+- `AI_REVIEW_TRIGGER_PAT` (cross-AI auto-fix を有効化する場合のみ)
+
+`AI_REVIEW_TRIGGER_PAT` の条件:
+
+- Classic PAT であれば `repo` スコープ
+- Fine-grained PAT であれば対象 repository に対し
+  `Pull requests: write` と `Issues: write` を付与
+- repository admin が発行したトークンで問題ない。個別の GitHub App を
+  用意する必要はない
 
 例:
 
 ```text
 ANTHROPIC_API_KEY=...
 OPENAI_API_KEY=...
+AI_REVIEW_TRIGGER_PAT=ghp_... もしくは github_pat_...
 ```
 
 設定手順:
@@ -195,6 +220,10 @@ OPENAI_API_KEY=...
 3. `Secrets` タブで上記の Actions secrets を追加する
 4. `codex/` または `claude/` 接頭辞のブランチからテスト用 PR を作成する
 5. 想定した AI review workflow が動くことを確認する
+6. PAT 設定後の確認方法として、`claude/` 接頭辞のブランチで PR を作り
+   Codex review 実行後に post された `@claude` コメントから
+   `claude.yml` が起動することを `gh run list --workflow=claude.yml`
+   で確かめる
 
 ## 8. マージ方針
 
