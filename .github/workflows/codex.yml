@@ -74,6 +74,10 @@ jobs:
           output-file: codex-output.md
           safety-strategy: drop-sudo
           sandbox: workspace-write
+          # Claude Code review posts @codex follow-up comments as a GitHub App.
+          # Allow those bot-authored events to bypass codex-action's write-access
+          # check while preserving the branch/fork guards above.
+          allow-bots: true
 
       - name: Commit and push fixes
         env:

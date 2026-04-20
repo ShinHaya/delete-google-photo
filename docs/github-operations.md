@@ -175,6 +175,7 @@ GitHub Actions 自動化:
 - `codex.yml` は安全のため次の制約を持つ
   - fork 由来の PR では起動しない
   - head ブランチが `codex/*` でない場合は起動しない
+  - Claude Code review が App (`claude[bot]`) として投稿した `@codex` コメントでも動くよう、`openai/codex-action` では bot 実行を許可する
 
 @claude メンションの起動には PAT が必要:
 
@@ -188,8 +189,16 @@ GitHub Actions 自動化:
   を優先して使う。未設定時は `GITHUB_TOKEN` にフォールバックするので
   コメント投稿自体は成功するが、`@claude` 自動修正は動かない
 - `@codex` メンションは claude-code-action が App (`claude[bot]`) として
-  投稿するため PAT なしでも `codex.yml` を起動できる（別問題として
-  actor 権限の扱いは Issue #101 で追う）
+  投稿するため PAT なしでも `codex.yml` を起動できる。`codex.yml` 側では
+  `openai/codex-action` の `allow-bots` を有効にして、GitHub App 投稿の
+  コメントでも write-access check で落ちないようにする
+
+mention trigger の確認手順:
+
+1. `codex/*` または `claude/*` 接頭辞の head branch を持つテスト用 PR を作る
+2. 対応する review workflow がレビューコメント末尾に `@codex` または `@claude` を投稿することを確認する
+3. `gh run list --workflow codex.yml` または `gh run list --workflow claude.yml` で、対象 mention を受けた workflow run が作成されていることを確認する
+4. run が failed の場合は `gh run view <run-id> --log-failed` で、event 条件不一致・branch guard・bot / permission check のどこで止まったかを確認する
 
 必要な secret:
 
