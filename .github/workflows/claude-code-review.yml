@@ -11,8 +11,30 @@ on:
     #   - "src/**/*.jsx"
 
 jobs:
+  skip-check:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - name: Detect [skip-review] marker on head commit
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          MESSAGE=$(gh api "repos/${{ github.repository }}/commits/${HEAD_SHA}" --jq .commit.message)
+          if printf '%s' "$MESSAGE" | grep -F "[skip-review]" > /dev/null; then
+            echo "Head commit carries [skip-review]; skipping review."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
   claude-review:
+    needs: skip-check
     if: |
+      needs.skip-check.outputs.skip != 'true' &&
       !github.event.pull_request.draft &&
       startsWith(github.event.pull_request.head.ref, 'codex/')
     runs-on: ubuntu-latest
@@ -35,6 +57,11 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          prompt: |
+            /code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}
+
+            After posting the review, append the following line verbatim at the end of the review body so the original developer (Codex) is mentioned and can apply the fixes:
+
+            @codex 上記のレビュー指摘を反映する修正コミットを作成してください。修正後の commit message には必ず `[skip-review]` を含めてください。
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
