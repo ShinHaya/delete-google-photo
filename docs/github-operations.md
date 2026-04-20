@@ -174,6 +174,13 @@ CODEX_REVIEWER_USERS=codex-reviewer
 CLAUDE_REVIEWER_USERS=claude-reviewer
 ```
 
+設定手順:
+
+1. GitHub で対象 repository を開く
+2. `Settings` > `Secrets and variables` > `Actions` を開く
+3. `Variables` タブで上記の repository variables を追加する
+4. テスト用 PR を作成し、想定した reviewer が追加されることを確認する
+
 ## 8. マージ方針
 
 - `main` への取り込みは **Squash merge** を基本とする

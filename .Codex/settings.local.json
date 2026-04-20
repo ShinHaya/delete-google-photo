@@ -6,11 +6,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "file_path=\"${CODEX_FILE_PATH:-$CLAUDE_FILE_PATH}\"; if [[ -n \"$file_path\" && \"$file_path\" == *.py ]]; then uv run ruff check --fix \"$file_path\" && uv run ruff format \"$file_path\"; fi"
+            "command": "uv run ruff check --fix app tests && uv run ruff format app tests"
           },
           {
             "type": "command",
-            "command": "file_path=\"${CODEX_FILE_PATH:-$CLAUDE_FILE_PATH}\"; if [[ -n \"$file_path\" && \"$file_path\" == *.py ]]; then uv run pytest -x -q; fi"
+            "command": "uv run pytest -x -q"
           }
         ]
       }

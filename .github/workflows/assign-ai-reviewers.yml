@@ -1,6 +1,9 @@
 name: Assign AI Reviewers
 
 on:
+  # pull_request_target を使う理由:
+  # - フォーク PR でも repository variables を参照するため
+  # - PR 本文とメタデータだけを扱い、コードの checkout は行わないため
   pull_request_target:
     types:
       - opened
@@ -43,8 +46,6 @@ jobs:
                 .map((entry) => entry.trim())
                 .filter(Boolean);
 
-            const hasAny = (items) => items.length > 0;
-
             const author = pr.user.login;
             const codexAuthors = parseCsv(process.env.CODEX_AUTHOR_LOGINS);
             const claudeAuthors = parseCsv(process.env.CLAUDE_AUTHOR_LOGINS);
@@ -86,7 +87,7 @@ jobs:
             reviewerUsers = reviewerUsers.filter((login) => !requestedUsers.includes(login));
             reviewerTeams = reviewerTeams.filter((slug) => !requestedTeams.includes(slug));
 
-            if (!hasAny(reviewerUsers) && !hasAny(reviewerTeams)) {
+            if (reviewerUsers.length === 0 && reviewerTeams.length === 0) {
               core.notice(
                 `Route ${route} matched for ${author}, but no additional reviewer requests were needed.`
               );

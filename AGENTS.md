@@ -121,7 +121,7 @@ delete-google-photo/
 ## 関連ドキュメント
 
 - GitHub Issues - タスク管理
-- @docs/github-operations.md - Codex / Codex 共通の GitHub 運用方針
+- @docs/github-operations.md - Codex / Claude 共通の GitHub 運用方針
 - @docs/issue-implementation-plan-template.md - Issue に記載する実装方針テンプレート
 - @docs/requirements.md - 要件定義書
 - @docs/development.md - 開発方法
