@@ -24,14 +24,15 @@ Codex で作業を始めるときは、まず以下を読む想定です。
 
 1. `README.md`
 2. `docs/github-operations.md`
-3. `TODO.md`
+3. GitHub Issues
 4. `docs/requirements.md`
 5. `docs/development.md`
 6. `docs/testing.md`
 7. `docs/manual-test.md`
-8. 必要に応じて `app/main.py`, `app/services/`, `app/browser/`, `app/routers/`
+8. `docs/issue-implementation-plan-template.md`
+9. 必要に応じて `app/main.py`, `app/services/`, `app/browser/`, `app/routers/`
 
-優先度としては、まず `README.md` と `TODO.md` で現在地を把握し、
+優先度としては、まず `README.md` と GitHub Issues で現在地を把握し、
 次に `docs/` と実装を読むのが効率的です。
 
 ## 3. Claude Code との違い
@@ -53,9 +54,10 @@ Codex では、以下の流れで進めるのが基本です。
 
 1. ドキュメントと関連コードを読む
 2. 変更対象と影響範囲を整理する
-3. 実装する
-4. 必要な lint / test を自分で実行する
-5. ドキュメントや `TODO.md` の更新要否を確認する
+3. 実装方針の正本を GitHub Issue に書く
+4. 実装する
+5. 必要な lint / test を自分で実行する
+6. ドキュメントや GitHub Issue の更新要否を確認する
 
 Claude Code の Hook に頼らず、**変更後の確認を毎回明示的に行う**のが重要です。
 
@@ -124,21 +126,23 @@ uv run pytest tests/e2e/ -v -m e2e
 - `app/models/`: Pydantic モデル
 - `tests/`: テスト
 - `docs/`: 仕様・開発・テスト手順
-- `TODO.md`: 開発タスクと現在の進捗
+- GitHub Issues: 開発タスクと現在の進捗
+
+実装方針の正本も GitHub Issue に置く。ローカルだけの計画メモは補助用途として扱い、
+レビュアー共有が必要な内容は Issue または Git 管理下の `docs/` に残す。
 
 ## 9. 現在の主要タスク
 
-`TODO.md` の最新内容に従って進めてください。
+GitHub Issues の最新内容に従って進めてください。
 
-現時点では、次の大きな作業対象は **マルチアカウント対応**です。
-着手前に `TODO.md` の要件と既存実装を必ず確認してください。
+着手前に対象 Issue の要件と既存実装を必ず確認してください。
 
 ## 10. Codex への依頼テンプレート
 
 初回調査:
 
 ```text
-README.md、TODO.md、docs/、関連コードを先に読んで、
+README.md、GitHub Issues、docs/、関連コードを先に読んで、
 現在の状態と次にやるべきことを整理してください。
 その後、必要な実装とテストを進めてください。
 ```
@@ -146,7 +150,7 @@ README.md、TODO.md、docs/、関連コードを先に読んで、
 実装依頼:
 
 ```text
-TODO.md の「マルチアカウント対応」のうち、
+GitHub Issue の「マルチアカウント対応」のうち、
 まず service と router を実装してください。
 変更後は関連テストを実行し、必要ならドキュメントも更新してください。
 ```
@@ -161,7 +165,8 @@ TODO.md の「マルチアカウント対応」のうち、
 ## 11. Codex で作業するときの注意点
 
 - Claude Code 向けの自動 Hook 実行を前提にしない
-- `TODO.md` の更新ルールを守る
+- GitHub Issue の更新ルールを守る
+- 実装方針は Issue を正本とし、Plan モードやローカルメモだけに閉じない
 - 手動テストが必要な変更では `docs/manual-test.md` を確認する
 - Google Photos の DOM は変わるため、ブラウザ自動化コードの変更時は慎重に検証する
 - 認証やブラウザ状態を不用意に消さない

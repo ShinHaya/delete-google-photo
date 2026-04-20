@@ -317,13 +317,11 @@ app/
 ## 6. Git運用
 
 ### 6.1 ブランチ戦略
-```
-main          # 安定版
-└── develop   # 開発版
-    ├── feature/xxx  # 機能開発
-    ├── fix/xxx      # バグ修正
-    └── refactor/xxx # リファクタリング
-```
+- GitHub 運用は `docs/github-operations.md` を正とする
+- 開発モデルは **トランクベース開発** とし、`main` を唯一のトランクとする
+- 新規 Issue に着手するときは、最新の `main` から Issue 専用ブランチを切る
+- ブランチ名は `codex/issue-<number>-<short-english-slug>` または
+  `claude/issue-<number>-<short-english-slug>` を使う
 
 ### 6.2 コミットメッセージ
 ```
@@ -334,6 +332,9 @@ refactor: リファクタリング
 test: テスト追加・修正
 chore: ビルド・設定変更
 ```
+
+コミット前の品質ゲート、PR 作成、レビュー担当ルールは
+`docs/github-operations.md` に従う。
 
 ## 7. 実行方法
 
