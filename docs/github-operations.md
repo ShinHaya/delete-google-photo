@@ -177,22 +177,49 @@ GitHub Actions 自動化:
   - head ブランチが `codex/*` でない場合は起動しない
   - Claude Code review が App (`claude[bot]`) として投稿した `@codex` コメントでも動くよう、`openai/codex-action` では bot 実行を許可する
 
+@claude メンションの起動には PAT が必要:
+
+- GitHub Actions の仕様で、`GITHUB_TOKEN` が authored した PR コメントは
+  後続ワークフローを起動しない（recursion-prevention ルール）
+- `codex-code-review.yml` の `post-feedback` ジョブは `github-script` で
+  コメントを投稿しているため、既定の `GITHUB_TOKEN` のままでは
+  コメントが `github-actions[bot]` 名義となり、`claude.yml` の
+  `issue_comment` トリガーが発火しない
+- これを解決するため、`post-feedback` は secret `AI_REVIEW_TRIGGER_PAT`
+  を優先して使う。未設定時は `GITHUB_TOKEN` にフォールバックするので
+  コメント投稿自体は成功するが、`@claude` 自動修正は動かない
+- `@codex` メンションは claude-code-action が App (`claude[bot]`) として
+  投稿するため PAT なしでも `codex.yml` を起動できる。`codex.yml` 側では
+  `openai/codex-action` の `allow-bots` を有効にして、GitHub App 投稿の
+  コメントでも write-access check で落ちないようにする
+
 mention trigger の確認手順:
 
 1. `codex/*` または `claude/*` 接頭辞の head branch を持つテスト用 PR を作る
 2. 対応する review workflow がレビューコメント末尾に `@codex` または `@claude` を投稿することを確認する
 3. `gh run list --workflow codex.yml` または `gh run list --workflow claude.yml` で、対象 mention を受けた workflow run が作成されていることを確認する
 4. run が failed の場合は `gh run view <run-id> --log-failed` で、event 条件不一致・branch guard・bot / permission check のどこで止まったかを確認する
+
 必要な secret:
 
 - `ANTHROPIC_API_KEY`
 - `OPENAI_API_KEY`
+- `AI_REVIEW_TRIGGER_PAT` (cross-AI auto-fix を有効化する場合のみ)
+
+`AI_REVIEW_TRIGGER_PAT` の条件:
+
+- Classic PAT であれば `repo` スコープ
+- Fine-grained PAT であれば対象 repository に対し
+  `Pull requests: write` と `Issues: write` を付与
+- repository admin が発行したトークンで問題ない。個別の GitHub App を
+  用意する必要はない
 
 例:
 
 ```text
 ANTHROPIC_API_KEY=...
 OPENAI_API_KEY=...
+AI_REVIEW_TRIGGER_PAT=ghp_... もしくは github_pat_...
 ```
 
 設定手順:
@@ -202,6 +229,10 @@ OPENAI_API_KEY=...
 3. `Secrets` タブで上記の Actions secrets を追加する
 4. `codex/` または `claude/` 接頭辞のブランチからテスト用 PR を作成する
 5. 想定した AI review workflow が動くことを確認する
+6. PAT 設定後の確認方法として、`claude/` 接頭辞のブランチで PR を作り
+   Codex review 実行後に post された `@claude` コメントから
+   `claude.yml` が起動することを `gh run list --workflow=claude.yml`
+   で確かめる
 
 ## 8. マージ方針
 
@@ -210,6 +241,14 @@ OPENAI_API_KEY=...
 - レビュー指摘を取り込んだあと、最終状態でも再度品質ゲートを満たす
 - マージ後は不要ブランチを削除する
 - レビュー未解決のままマージしない
+
+Issue の close タイミング:
+
+- **Issue は原則、PR 作成前に閉じない。** 通常は PR が merge されたタイミングで close する
+- PR 本文に `Closes #<issue>` / `Fixes #<issue>` を含め、squash merge 時に GitHub 側で自動 close させるのを基本とする
+- 自動 close が効かないケース（PR と Issue の対応がずれた、複数 Issue を 1 PR でまとめた、など）は、merge 完了後に `gh issue close <n>` で明示的に閉じる
+- ローカルでドキュメント修正だけ行って commit した段階では Issue を閉じない。push → PR 作成 → merge という一連の流れが完了して初めて close してよい
+- 「実装は完了したが PR をまだ作っていない」状態で Issue を閉じない。該当 Issue が PR 前に閉じていると、レビューや自動化（AI レビュー、`gh` ベースの状態確認など）からそのタスクが追えなくなる
 
 ## 9. 競合解消
 
@@ -242,23 +281,34 @@ OPENAI_API_KEY=...
 
 ## 12. gh コマンド運用
 
-`gh` は補助として使うが、運用ルール自体は Git の基本動作に依存させる。
+GitHub 上の operation（Issue / PR / review / merge など）をローカルから
+行う場合は、**原則として `gh` コマンドを使う**。ブラウザ UI でも可能だが、
+Codex / Claude を含むエージェント運用では手順再現性のために `gh` を基本とする。
 
-例:
+運用ルール:
+
+- Issue の参照・コメント・close、PR の作成・レビュー取得・merge は `gh` から行うのを基本とする
+- `git push` など Git そのものの操作は従来どおり `git` コマンドを使う
+- `gh` が使えない環境（一時的に未インストール、認証切れなど）では、Web UI で代替してよいが、その旨を作業ログ / PR 本文に明示する
+
+よく使うコマンド:
 
 ```bash
 gh repo view
 gh issue view <number>
+gh issue comment <number> --body "..."
+gh issue close <number>
 gh pr status
 gh pr create
 gh pr view --web
+gh pr review <number> --comment --body "..."
 gh pr merge --squash --delete-branch
 ```
 
 ポイント:
 
-- `gh` がなくても成立するルールにする
-- ただし PR 作成、レビュー確認、merge は `gh` で統一すると運用がぶれにくい
+- ルール自体は Git の基本動作（branch / commit / push）で成り立つように書く
+- その上で GitHub 固有の状態変更（Issue / PR / review / merge）は `gh` で統一し、運用をぶらさない
 
 ## 13. エージェント共通ルール
 
@@ -269,6 +319,8 @@ gh pr merge --squash --delete-branch
 - ドキュメント変更のみなら、Git 管理下であればそのまま適切な commit message で commit し、続けて push する
 - Git 管理下でない場合は、その事実を明示し commit は行わない
 - GitHub Issue の状態管理をタスク管理の正とし、ローカルの TODO ファイルには依存しない
+- Issue の close タイミングは § 8 に従う（原則として PR 作成前に閉じず、merge 時に自動 close させる）
+- ローカルから GitHub に対して行う operation（Issue / PR / review / merge）は § 12 に従って `gh` コマンドを基本とする
 
 ## 14. 実装方針の置き場所
 
