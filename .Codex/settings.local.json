@@ -1,0 +1,19 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run ruff check --fix app tests && uv run ruff format app tests"
+          },
+          {
+            "type": "command",
+            "command": "uv run pytest -x -q"
+          }
+        ]
+      }
+    ]
+  }
+}

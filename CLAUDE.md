@@ -116,13 +116,13 @@ delete-google-photo/
 ├── .claude/
 │   └── settings.local.json  # Hooks設定
 ├── pyproject.toml        # プロジェクト設定・依存関係
-└── TODO.md               # タスク管理
 ```
 
 ## 関連ドキュメント
 
-- @TODO.md - タスク管理（完了時は必ずチェックを入れる）
+- GitHub Issues - タスク管理
 - @docs/github-operations.md - Codex / Claude 共通の GitHub 運用方針
+- @docs/issue-implementation-plan-template.md - Issue に記載する実装方針テンプレート
 - @docs/requirements.md - 要件定義書
 - @docs/development.md - 開発方法
 - @docs/testing.md - テスト方法
@@ -130,7 +130,8 @@ delete-google-photo/
 
 ## 開発ルール
 
-1. **タスク完了時**: TODO.mdの該当項目にチェックを入れる
+1. **タスク完了時**: 対応する GitHub Issue の状態・コメント・チェックリストを更新する
+   実装方針の正本も GitHub Issue に置き、ローカル専用メモだけにしない
 2. **コード修正時**: Hooksによりリンターが自動実行される
 3. **テストフェーズ以降**: コード修正時に `uv run pytest` が自動実行される
 

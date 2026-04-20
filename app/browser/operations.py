@@ -536,7 +536,7 @@ class PhotoOperations:
         boundary day's tiles to still be loading even after a tile from the
         previous day has scrolled into view. Stopping eagerly there caused
         the boundary day to be undercounted (e.g. 3/7 photos detected for
-        a single-day range — see TODO.md).
+        a single-day range due to Google Photos grid virtualization).
 
         Args:
             start_date: Start of the date range (inclusive)
