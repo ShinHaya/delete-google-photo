@@ -66,6 +66,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: codex-review
     if: needs.codex-review.outputs.final_message != ''
+    permissions:
+      pull-requests: write
+      issues: write
     steps:
       - name: Post Codex feedback
         uses: actions/github-script@v7
