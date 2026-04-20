@@ -60,6 +60,19 @@ Codex では、以下の流れで進めるのが基本です。
 6. 必要な lint / test を自分で実行する
 7. ドキュメントや GitHub Issue の更新要否を確認する
 8. ドキュメントを更新した場合は、すぐに commit し、可能ならそのまま push する
+9. ブランチを `git push` でリモートに反映する
+10. `gh pr create` で PR を作成する（本文に `Closes #<issue>` を含める）
+11. レビュー対応後に squash merge する（`gh pr merge --squash --delete-branch`）
+12. **Issue は merge 時の自動 close に任せる**。自動 close が効かない場合だけ `gh issue close <n>` で明示的に閉じる
+
+重要:
+
+- **Issue は PR 作成前に閉じない**。ローカルで修正が完了しただけの段階や、
+  push はしたが PR をまだ作っていない段階で Issue を close すると、レビューと
+  merge の流れが成立しなくなります
+- GitHub 操作（Issue / PR / review / merge）はローカルから行うとき **`gh`
+  コマンドを使う**。詳細は `docs/github-operations.md` § 8 (Issue の close
+  タイミング) と § 12 (gh コマンド運用) を参照
 
 Claude Code の Hook に頼らず、**変更後の確認を毎回明示的に行う**のが重要です。
 

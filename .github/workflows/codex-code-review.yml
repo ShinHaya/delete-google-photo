@@ -66,11 +66,20 @@ jobs:
     runs-on: ubuntu-latest
     needs: codex-review
     if: needs.codex-review.outputs.final_message != ''
+    permissions:
+      pull-requests: write
+      issues: write
     steps:
+      # Post with a PAT when available. Comments authored by GITHUB_TOKEN
+      # do not dispatch further workflow events (GitHub's recursion-prevention
+      # rule), which would prevent the @claude mention below from triggering
+      # .github/workflows/claude.yml. If AI_REVIEW_TRIGGER_PAT is unset we
+      # fall back to GITHUB_TOKEN so the comment still posts for human
+      # visibility, but the downstream @claude auto-fix will not fire.
       - name: Post Codex feedback
         uses: actions/github-script@v7
         with:
-          github-token: ${{ github.token }}
+          github-token: ${{ secrets.AI_REVIEW_TRIGGER_PAT || github.token }}
           script: |
             const original = process.env.CODEX_FINAL_MESSAGE || "";
             const mention = "@claude 上記のレビュー指摘を反映する修正コミットを作成してください。修正後の commit message には必ず `[skip-review]` を含めてください。";
