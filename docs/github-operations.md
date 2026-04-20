@@ -40,6 +40,7 @@ git switch -c <agent>/issue-<number>-<short-english-slug>
 - ブランチ名には必ず Issue 番号を含める
 - 英語スラグは Issue のタイトルと内容から、一目で目的が分かる短い表現にする
 - 英語スラグは 3〜6 語程度を目安にし、必要以上に長くしない
+- ブランチ作成後は、対応する Issue にそのブランチ名をコメントまたは Description 更新で記録し、Issue からブランチを辿れる状態にする
 
 ## 3. ブランチ運用
 
@@ -49,6 +50,7 @@ git switch -c <agent>/issue-<number>-<short-english-slug>
 - 緊急修正でも、原則として短命ブランチか PR を使う
 - 作業中に `main` との差分が広がったら、早めに `main` を取り込む
 - `main` 反映は merge より rebase を優先する
+- Issue とブランチのリンクが切れないよう、ブランチ名変更時も Issue 側の記載を更新する
 
 トランク開発では、ブランチの滞留を防ぎつつ、各 Issue を独立して追跡できることを優先する。
 
@@ -88,6 +90,7 @@ uv run pytest tests/e2e/ -v -m e2e
 
 - `app/` や `tests/` などのコード編集時は、format / lint / test がすべて成功したときだけ commit する
 - `docs/`、`README.md`、`CLAUDE.md` などのドキュメント編集のみであれば、品質ゲートを回さずに commit してよい
+- ドキュメントを更新した場合は、変更内容を確認したらすぐに commit し、可能ならそのまま push する
 - 失敗中の状態を一時保存するための commit は作らない
 - 実行していない確認項目がある場合は、PR または作業メモに明記する
 - ブラウザ自動化や Google Photos の実挙動に影響する変更は、可能なら手動確認も行う
@@ -241,7 +244,7 @@ gh pr merge --squash --delete-branch
 - 変更後は、実行した確認コマンドと結果を明示する
 - 変更に対応するドキュメント更新が必要なら同じ変更セットに含める
 - コード変更時は品質ゲートを満たしたうえで、Git 管理下なら適切な commit message で commit する
-- ドキュメント変更のみなら、Git 管理下であればそのまま適切な commit message で commit する
+- ドキュメント変更のみなら、Git 管理下であればそのまま適切な commit message で commit し、続けて push する
 - Git 管理下でない場合は、その事実を明示し commit は行わない
 - GitHub Issue の状態管理をタスク管理の正とし、ローカルの TODO ファイルには依存しない
 
