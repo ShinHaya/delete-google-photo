@@ -175,7 +175,14 @@ GitHub Actions 自動化:
 - `codex.yml` は安全のため次の制約を持つ
   - fork 由来の PR では起動しない
   - head ブランチが `codex/*` でない場合は起動しない
+  - Claude Code review が App (`claude[bot]`) として投稿した `@codex` コメントでも動くよう、`openai/codex-action` では bot 実行を許可する
 
+mention trigger の確認手順:
+
+1. `codex/*` または `claude/*` 接頭辞の head branch を持つテスト用 PR を作る
+2. 対応する review workflow がレビューコメント末尾に `@codex` または `@claude` を投稿することを確認する
+3. `gh run list --workflow codex.yml` または `gh run list --workflow claude.yml` で、対象 mention を受けた workflow run が作成されていることを確認する
+4. run が failed の場合は `gh run view <run-id> --log-failed` で、event 条件不一致・branch guard・bot / permission check のどこで止まったかを確認する
 必要な secret:
 
 - `ANTHROPIC_API_KEY`
