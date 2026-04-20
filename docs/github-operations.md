@@ -161,6 +161,21 @@ GitHub Actions 自動化:
 - `claude/` で始まるブランチの PR では Codex review を走らせる
 - 接頭辞に一致しないブランチでは、どちらの review workflow も走らせない
 
+レビュー結果からの自動修正（cross-AI auto-fix）:
+
+- レビュー本文の末尾には、相手側 AI への `@codex` / `@claude` メンションを必ず付ける
+  - Claude Code review は本文末尾に `@codex` を含める（プロンプトで強制）
+  - Codex review は本文末尾に `@claude` を含める（プロンプトおよび post-feedback ジョブで強制）
+- 開発者 AI は対応するメンション ワークフローで起動する
+  - `@codex` メンション → `.github/workflows/codex.yml` が PR の head ブランチに修正コミットを push
+  - `@claude` メンション → `.github/workflows/claude.yml` が同様に修正コミットを push
+- 修正コミットの commit message には必ず `[skip-review]` を含める
+  - Claude Code review / Codex Code review は head commit message に `[skip-review]` がある場合は skip-check ジョブで早期 skip する
+  - これにより「レビュー → 修正 → 再レビュー → ...」の無限ループを抑止する
+- `codex.yml` は安全のため次の制約を持つ
+  - fork 由来の PR では起動しない
+  - head ブランチが `codex/*` でない場合は起動しない
+
 必要な secret:
 
 - `ANTHROPIC_API_KEY`

@@ -1,0 +1,93 @@
+name: Codex
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  codex:
+    if: |
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && contains(github.event.comment.body, '@codex')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@codex')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@codex'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Resolve PR metadata
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "issue_comment" ]; then
+            PR_NUMBER="${{ github.event.issue.number }}"
+          else
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+          fi
+          PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}")
+          HEAD_REF=$(echo "$PR_DATA" | jq -r .head.ref)
+          HEAD_SHA=$(echo "$PR_DATA" | jq -r .head.sha)
+          HEAD_REPO=$(echo "$PR_DATA" | jq -r .head.repo.full_name)
+          echo "number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "head_ref=${HEAD_REF}" >> "$GITHUB_OUTPUT"
+          echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
+          echo "head_repo=${HEAD_REPO}" >> "$GITHUB_OUTPUT"
+
+      - name: Guard against external branches
+        run: |
+          set -euo pipefail
+          if [[ "${{ steps.pr.outputs.head_repo }}" != "${{ github.repository }}" ]]; then
+            echo "Refusing to operate on a fork PR: ${{ steps.pr.outputs.head_repo }}"
+            exit 1
+          fi
+          if [[ "${{ steps.pr.outputs.head_ref }}" != codex/* ]]; then
+            echo "Refusing to fix a branch that is not codex/*: ${{ steps.pr.outputs.head_ref }}"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.pr.outputs.head_ref }}
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Pre-fetch base ref
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          # base ref may be empty on issue_comment events; default to main
+          BASE_REF="${BASE_REF:-main}"
+          git fetch --no-tags origin "${BASE_REF}"
+
+      - name: Run Codex fix
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .github/codex/prompts/fix.md
+          output-file: codex-output.md
+          safety-strategy: drop-sudo
+          sandbox: workspace-write
+
+      - name: Commit and push fixes
+        env:
+          HEAD_REF: ${{ steps.pr.outputs.head_ref }}
+        run: |
+          set -euo pipefail
+          git config user.name "codex-bot"
+          git config user.email "codex-bot@users.noreply.github.com"
+          # Ignore the codex output artefact when checking for fix diff
+          rm -f codex-output.md
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No changes produced by Codex. Skipping commit."
+            exit 0
+          fi
+          git add -A
+          git commit -m "fix: apply Codex suggestions [skip-review]"
+          git push origin "HEAD:${HEAD_REF}"

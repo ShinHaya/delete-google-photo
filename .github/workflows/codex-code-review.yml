@@ -9,8 +9,30 @@ on:
       - reopened
 
 jobs:
+  skip-check:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - name: Detect [skip-review] marker on head commit
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          MESSAGE=$(gh api "repos/${{ github.repository }}/commits/${HEAD_SHA}" --jq .commit.message)
+          if printf '%s' "$MESSAGE" | grep -F "[skip-review]" > /dev/null; then
+            echo "Head commit carries [skip-review]; skipping review."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
   codex-review:
+    needs: skip-check
     if: |
+      needs.skip-check.outputs.skip != 'true' &&
       !github.event.pull_request.draft &&
       startsWith(github.event.pull_request.head.ref, 'claude/')
     runs-on: ubuntu-latest
@@ -50,11 +72,16 @@ jobs:
         with:
           github-token: ${{ github.token }}
           script: |
+            const original = process.env.CODEX_FINAL_MESSAGE || "";
+            const mention = "@claude 上記のレビュー指摘を反映する修正コミットを作成してください。修正後の commit message には必ず `[skip-review]` を含めてください。";
+            const body = original.includes("@claude")
+              ? original
+              : `${original.trim()}\n\n${mention}\n`;
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.pull_request.number,
-              body: process.env.CODEX_FINAL_MESSAGE,
+              body,
             });
         env:
           CODEX_FINAL_MESSAGE: ${{ needs.codex-review.outputs.final_message }}
