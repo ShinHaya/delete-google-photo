@@ -155,5 +155,6 @@ Google Photos APIは写真の削除機能を提供していないため、本ツ
 ## 開発者向けドキュメント
 
 - 共通の GitHub 運用方針: [docs/github-operations.md](docs/github-operations.md)
+- AI reviewer 自動設定も `docs/github-operations.md` の GitHub Actions 運用に従う
 - Codex で作業する場合: [docs/codex-onboarding.md](docs/codex-onboarding.md)
 - Claude Code で作業する場合: [CLAUDE.md](CLAUDE.md)

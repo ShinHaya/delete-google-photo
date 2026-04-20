@@ -149,6 +149,31 @@ PR に最低限含める内容:
 - Claude Code が開発者のときは Codex をレビュアーにする
 - レビューコメントが付いたら、開発者はその対応を行う
 
+GitHub Actions 自動化:
+
+- reviewer 自動設定は `.github/workflows/assign-ai-reviewers.yml` で行う
+- 開発者判定は PR author の GitHub login を一次判定キーとする
+- reviewer の割り当て先は repository variables で設定する
+- 判定不能・未設定・曖昧なケースでは reviewer を追加せず、安全側で終了する
+
+必要な repository variables:
+
+- `CODEX_AUTHOR_LOGINS`: Codex 開発者として扱う GitHub login の CSV
+- `CLAUDE_AUTHOR_LOGINS`: Claude Code 開発者として扱う GitHub login の CSV
+- `CODEX_REVIEWER_USERS`: Claude Code 開発時に追加する Codex reviewer user login の CSV
+- `CLAUDE_REVIEWER_USERS`: Codex 開発時に追加する Claude Code reviewer user login の CSV
+- `CODEX_REVIEWER_TEAMS`: 必要なら Codex reviewer team slug の CSV
+- `CLAUDE_REVIEWER_TEAMS`: 必要なら Claude reviewer team slug の CSV
+
+例:
+
+```text
+CODEX_AUTHOR_LOGINS=codex-bot
+CLAUDE_AUTHOR_LOGINS=claude-bot
+CODEX_REVIEWER_USERS=codex-reviewer
+CLAUDE_REVIEWER_USERS=claude-reviewer
+```
+
 ## 8. マージ方針
 
 - `main` への取り込みは **Squash merge** を基本とする
