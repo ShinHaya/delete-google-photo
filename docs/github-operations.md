@@ -204,6 +204,14 @@ OPENAI_API_KEY=...
 - マージ後は不要ブランチを削除する
 - レビュー未解決のままマージしない
 
+Issue の close タイミング:
+
+- **Issue は原則、PR 作成前に閉じない。** 通常は PR が merge されたタイミングで close する
+- PR 本文に `Closes #<issue>` / `Fixes #<issue>` を含め、squash merge 時に GitHub 側で自動 close させるのを基本とする
+- 自動 close が効かないケース（PR と Issue の対応がずれた、複数 Issue を 1 PR でまとめた、など）は、merge 完了後に `gh issue close <n>` で明示的に閉じる
+- ローカルでドキュメント修正だけ行って commit した段階では Issue を閉じない。push → PR 作成 → merge という一連の流れが完了して初めて close してよい
+- 「実装は完了したが PR をまだ作っていない」状態で Issue を閉じない。該当 Issue が PR 前に閉じていると、レビューや自動化（AI レビュー、`gh` ベースの状態確認など）からそのタスクが追えなくなる
+
 ## 9. 競合解消
 
 - コンフリクト解消時は、両方の変更意図を確認してから解決する
@@ -235,23 +243,34 @@ OPENAI_API_KEY=...
 
 ## 12. gh コマンド運用
 
-`gh` は補助として使うが、運用ルール自体は Git の基本動作に依存させる。
+GitHub 上の operation（Issue / PR / review / merge など）をローカルから
+行う場合は、**原則として `gh` コマンドを使う**。ブラウザ UI でも可能だが、
+Codex / Claude を含むエージェント運用では手順再現性のために `gh` を基本とする。
 
-例:
+運用ルール:
+
+- Issue の参照・コメント・close、PR の作成・レビュー取得・merge は `gh` から行うのを基本とする
+- `git push` など Git そのものの操作は従来どおり `git` コマンドを使う
+- `gh` が使えない環境（一時的に未インストール、認証切れなど）では、Web UI で代替してよいが、その旨を作業ログ / PR 本文に明示する
+
+よく使うコマンド:
 
 ```bash
 gh repo view
 gh issue view <number>
+gh issue comment <number> --body "..."
+gh issue close <number>
 gh pr status
 gh pr create
 gh pr view --web
+gh pr review <number> --comment --body "..."
 gh pr merge --squash --delete-branch
 ```
 
 ポイント:
 
-- `gh` がなくても成立するルールにする
-- ただし PR 作成、レビュー確認、merge は `gh` で統一すると運用がぶれにくい
+- ルール自体は Git の基本動作（branch / commit / push）で成り立つように書く
+- その上で GitHub 固有の状態変更（Issue / PR / review / merge）は `gh` で統一し、運用をぶらさない
 
 ## 13. エージェント共通ルール
 
@@ -262,6 +281,8 @@ gh pr merge --squash --delete-branch
 - ドキュメント変更のみなら、Git 管理下であればそのまま適切な commit message で commit し、続けて push する
 - Git 管理下でない場合は、その事実を明示し commit は行わない
 - GitHub Issue の状態管理をタスク管理の正とし、ローカルの TODO ファイルには依存しない
+- Issue の close タイミングは § 8 に従う（原則として PR 作成前に閉じず、merge 時に自動 close させる）
+- ローカルから GitHub に対して行う operation（Issue / PR / review / merge）は § 12 に従って `gh` コマンドを基本とする
 
 ## 14. 実装方針の置き場所
 
