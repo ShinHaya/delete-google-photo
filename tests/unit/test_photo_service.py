@@ -485,3 +485,52 @@ class TestPhotoService:
         assert state.deleted_count == 1
         assert state.failed_photo_ids == ["photo_failed"]
         assert state.failed_count == 1
+
+    @pytest.mark.asyncio
+    async def test_delete_photos_persists_failed_ids_before_interrupt(
+        self, photo_service: PhotoService, state_service: StateService
+    ) -> None:
+        """Failed ids must survive a cancel that lands before the run returns."""
+        cancel_event = asyncio.Event()
+
+        async def mock_streaming(
+            *_args: object, **kwargs: object
+        ) -> tuple[int, list[str]]:
+            on_failed = kwargs.get("on_photos_failed")
+            assert on_failed is not None
+            await on_failed(["photo_failed"])
+            cancel_event.set()
+            raise DeletionCancelledError("cancel after persisting failures")
+
+        with (
+            patch.object(
+                photo_service.operations,
+                "count_photos_in_range",
+                new_callable=AsyncMock,
+                return_value=3,
+            ),
+            patch.object(
+                photo_service.operations,
+                "delete_photos_in_range_streaming",
+                side_effect=mock_streaming,
+            ),
+        ):
+            result = await photo_service.delete_photos(
+                date(2020, 1, 1),
+                date(2020, 1, 31),
+                dry_run=False,
+                confirmed=True,
+                cancel_event=cancel_event,
+            )
+
+        assert result.deleted_count == 0
+        assert result.failed_count == 1
+        assert result.failed_photo_ids == ["photo_failed"]
+
+        sessions = await state_service.list_sessions()
+        assert len(sessions) == 1
+        state = await state_service.load(sessions[0])
+        assert state is not None
+        assert state.status == DeletionStatus.INTERRUPTED
+        assert state.failed_count == 1
+        assert state.failed_photo_ids == ["photo_failed"]

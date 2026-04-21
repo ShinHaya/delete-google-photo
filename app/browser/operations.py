@@ -1283,6 +1283,8 @@ class PhotoOperations:
         expected_total: int | None = None,
         on_progress: ProgressCallback | None = None,
         on_photo_deleted: Callable[[str], Coroutine[Any, Any, None]] | None = None,
+        on_photos_failed: Callable[[list[str]], Coroutine[Any, Any, None]]
+        | None = None,
         cancel_event: asyncio.Event | None = None,
         max_iterations: int = 10000,
         scroll_pause: float = 1.2,
@@ -1315,6 +1317,12 @@ class PhotoOperations:
             on_photo_deleted: Optional callback invoked with the deleted
                 photo id immediately after a successful deletion. Use this
                 to update persistent state for resume support.
+            on_photos_failed: Optional callback invoked with the list of
+                photo ids that failed in the most recent bulk-delete
+                attempt. Fired after the local ``failed_ids`` list grows,
+                so callers can persist failures incrementally and avoid
+                losing them if a subsequent ``cancel_event`` raises
+                before the function returns.
             cancel_event: Optional ``asyncio.Event``. When set, the loop
                 exits at the next checkpoint by raising
                 :class:`DeletionCancelledError`. Checkpoints are placed at
@@ -1433,6 +1441,12 @@ class PhotoOperations:
                         )
                         failed_ids.extend(fresh_ids)
                         skip_ids.update(fresh_ids)
+                        # Notify the caller before any cancel checkpoint
+                        # so they can persist these ids; otherwise an
+                        # interrupt landing right after this except block
+                        # would drop them.
+                        if on_photos_failed is not None:
+                            await on_photos_failed(list(fresh_ids))
                         await self._dismiss_open_dialog()
                         await self._exit_selection_mode()
                         _check_cancel()

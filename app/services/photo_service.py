@@ -11,7 +11,7 @@ from app.browser.client import BrowserClient
 from app.browser.operations import PhotoOperations
 from app.exceptions import DeletionCancelledError, InvalidDateRangeError
 from app.models.photo import DeletionResult, DryRunResult
-from app.models.state import DeletionState
+from app.models.state import DeletionState, DeletionStatus
 from app.services.state_service import StateService
 
 logger = logging.getLogger(__name__)
@@ -273,9 +273,16 @@ class PhotoService:
         # is no need to match ``last_processed_id`` — that was only needed
         # for the old pre-collect + iterate flow, which could re-see
         # already-processed photos in its pre-collected list.
-
-        state.mark_in_progress()
-        await self.state_service.save(state)
+        #
+        # NOTE: callers that schedule resume as a background task should
+        # transition the state to ``in_progress`` and persist it BEFORE
+        # invoking this method, so polling clients don't observe the
+        # stale ``interrupted`` status. We still flip the in-memory
+        # status here as a defensive default for callers that pass a
+        # freshly-loaded state.
+        if state.status != DeletionStatus.IN_PROGRESS:
+            state.mark_in_progress()
+            await self.state_service.save(state)
 
         return await self._run_streaming_delete(
             state=state,
@@ -319,6 +326,16 @@ class PhotoService:
                     f"Deletion cancelled after {state.processed_count} photo(s)"
                 )
 
+        async def _on_photos_failed(photo_ids: list[str]) -> None:
+            # Persist failures incrementally so a subsequent cancel can't
+            # drop them. Without this, the streaming deleter accumulates
+            # failures in a local list and a cancel raised before return
+            # would discard the whole list.
+            if not photo_ids:
+                return
+            state.record_failure(photo_ids)
+            await self.state_service.save(state)
+
         async def _on_progress(processed: int, total: int, photo_id: str) -> None:
             if on_progress is not None:
                 await on_progress(processed, total, photo_id)
@@ -333,20 +350,23 @@ class PhotoService:
                 expected_total=total_count,
                 on_progress=_on_progress,
                 on_photo_deleted=_on_photo_deleted,
+                on_photos_failed=_on_photos_failed,
                 cancel_event=cancel_event,
             )
 
+            # ``failed_ids`` from operations is the authoritative end-of-run
+            # list; ``state.failed_photo_ids`` already holds the same ids
+            # because we appended them via ``_on_photos_failed``. Replace
+            # rather than append to avoid double-counting.
             state.set_result_counts(deleted_count, failed_ids)
             state.mark_completed()
             await self.state_service.save(state)
 
         except DeletionCancelledError:
-            # Preserve whatever counts we accumulated so far and record
-            # any failures the streaming deleter returned before the
-            # cancellation. ``deleted_count`` on the state was kept in
-            # sync via ``increment_processed``; ``failed_photo_ids`` may
-            # already hold partial entries from earlier failures, so we
-            # do NOT overwrite them here.
+            # ``deleted_count`` on the state was kept in sync via
+            # ``increment_processed``, and ``failed_photo_ids`` was
+            # appended to via ``_on_photos_failed`` before the cancel
+            # checkpoint, so neither needs to be reconstructed here.
             state.mark_interrupted()
             await self.state_service.save(state)
             return DeletionResult(

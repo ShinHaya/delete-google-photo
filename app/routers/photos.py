@@ -369,6 +369,14 @@ async def resume_session(session_id: str) -> SessionStartResponse:
 
     await _claim_session_slot(session_id)
 
+    # Persist the in_progress transition BEFORE scheduling the background
+    # task. The polling client treats ``interrupted`` as terminal, so if
+    # the first poll lands before the background coroutine flips the
+    # status it would stop the UI flow even though resume is actually
+    # running. Same pattern as the delete endpoint.
+    state.mark_in_progress()
+    await state_service.save(state)
+
     cancel_event = asyncio.Event()
     _cancellation_events[session_id] = cancel_event
 
@@ -378,7 +386,7 @@ async def resume_session(session_id: str) -> SessionStartResponse:
     )
     _active_tasks[session_id] = task
 
-    return SessionStartResponse(session_id=session_id, status="in_progress")
+    return SessionStartResponse(session_id=session_id, status=state.status)
 
 
 @router.delete("/sessions/{session_id}")

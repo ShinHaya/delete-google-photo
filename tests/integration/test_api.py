@@ -2,6 +2,7 @@
 
 from collections.abc import Generator
 from datetime import date
+from unittest.mock import MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -175,3 +176,41 @@ class TestSessionEndpoints:
     ) -> None:
         response = await client.post("/api/photos/sessions/missing/resume")
         assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_resume_persists_in_progress_before_background_task(
+        self,
+        client: AsyncClient,
+        mock_settings: object,  # noqa: ARG002
+        reset_active_session: None,  # noqa: ARG002
+    ) -> None:
+        state = DeletionState(
+            session_id="resume-me",
+            start_date=date(2020, 1, 1),
+            end_date=date(2020, 1, 31),
+            total_count=10,
+            processed_count=4,
+            deleted_count=4,
+            status=DeletionStatus.INTERRUPTED,
+        )
+        await StateService().save(state)
+
+        def fake_create_task(coro: object, *, name: str | None = None) -> MagicMock:
+            del name
+            coro.close()
+            return MagicMock(name="resume-task")
+
+        with patch.object(
+            photos_router.asyncio,
+            "create_task",
+            side_effect=fake_create_task,
+        ):
+            response = await client.post("/api/photos/sessions/resume-me/resume")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data == {"session_id": "resume-me", "status": "in_progress"}
+
+        persisted = await StateService().load("resume-me")
+        assert persisted is not None
+        assert persisted.status == DeletionStatus.IN_PROGRESS
