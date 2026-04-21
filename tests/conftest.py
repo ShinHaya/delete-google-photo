@@ -35,6 +35,12 @@ def test_settings(temp_dir: Path) -> Settings:
 def mock_settings(test_settings: Settings, monkeypatch: pytest.MonkeyPatch) -> Settings:
     """Patch global settings with test settings."""
     monkeypatch.setattr("app.config.settings", test_settings)
+    monkeypatch.setattr("app.main.settings", test_settings)
+    monkeypatch.setattr("app.services.state_service.settings", test_settings)
+    monkeypatch.setattr("app.services.account_service.settings", test_settings)
+    monkeypatch.setattr("app.browser.client.settings", test_settings)
+    monkeypatch.setattr("app.browser.operations.settings", test_settings)
+    monkeypatch.setattr("app.utils.retry.settings", test_settings)
     return test_settings
 
 

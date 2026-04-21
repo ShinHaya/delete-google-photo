@@ -41,8 +41,8 @@ _cancellation_events: dict[str, asyncio.Event] = {}
 
 # HTTP status for "another deletion is already running"
 _CONFLICT_MESSAGE = (
-    "A deletion session is already in progress. "
-    "Wait for it to finish or interrupt it before starting a new one."
+    "削除セッションを実行中のため、この操作はできません。"
+    "完了まで待つか、中断してから再度実行してください。"
 )
 
 

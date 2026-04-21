@@ -148,6 +148,31 @@ class TestAccountService:
         assert len(accounts) == 1
         assert accounts[0].email == "persist@test.com"
 
+    def test_list_visible_accounts_hides_placeholders_when_labeled_exists(
+        self, svc: AccountService
+    ) -> None:
+        placeholder = svc.create_account()
+        labeled = svc.create_account()
+        svc.update_account(labeled.account_id, email="visible@example.com")
+
+        visible = svc.list_visible_accounts()
+
+        assert [a.account_id for a in visible] == [labeled.account_id]
+        assert placeholder.account_id not in {a.account_id for a in visible}
+
+    def test_ensure_visible_active_account_prefers_labeled_account(
+        self, svc: AccountService
+    ) -> None:
+        placeholder = svc.create_account()
+        labeled = svc.create_account()
+        svc.update_account(labeled.account_id, email="visible@example.com")
+        svc.set_active_account(placeholder.account_id)
+
+        active_id = svc.ensure_visible_active_account()
+
+        assert active_id == labeled.account_id
+        assert svc.get_active_account_id() == labeled.account_id
+
 
 class TestAccountModel:
     def test_label_with_email(self) -> None:

@@ -259,8 +259,26 @@ class PhotoService:
         if state is None:
             raise ValueError(f"Session not found: {session_id}")
 
-        if not state.is_resumable:
+        if state.status not in (
+            DeletionStatus.INTERRUPTED,
+            DeletionStatus.IN_PROGRESS,
+        ):
             raise ValueError(f"Session is not resumable (status: {state.status})")
+
+        # If the prior run already reached the expected total, there is
+        # nothing left to resume. This can happen when an interrupt lands
+        # just after the final deletion callback increments progress but
+        # before the task marks the session completed.
+        if state.total_count > 0 and state.processed_count >= state.total_count:
+            state.mark_completed()
+            await self.state_service.save(state)
+            return DeletionResult(
+                mode="resume",
+                target_count=state.total_count,
+                deleted_count=state.deleted_count,
+                failed_count=state.failed_count,
+                failed_photo_ids=list(state.failed_photo_ids),
+            )
 
         # Ensure authenticated (resume bypasses delete_photos, so we must
         # check here explicitly).
@@ -367,7 +385,10 @@ class PhotoService:
             # ``increment_processed``, and ``failed_photo_ids`` was
             # appended to via ``_on_photos_failed`` before the cancel
             # checkpoint, so neither needs to be reconstructed here.
-            state.mark_interrupted()
+            if state.processed_count >= total_count:
+                state.mark_completed()
+            else:
+                state.mark_interrupted()
             await self.state_service.save(state)
             return DeletionResult(
                 mode=mode,

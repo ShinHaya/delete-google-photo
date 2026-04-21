@@ -385,6 +385,102 @@ class TestPhotoService:
         with pytest.raises(ValueError, match="not resumable"):
             await photo_service.resume_deletion("completed")
 
+    @pytest.mark.asyncio
+    async def test_resume_deletion_allows_pre_marked_in_progress_state(
+        self, photo_service: PhotoService, state_service: StateService
+    ) -> None:
+        """Background resume may load a state already flipped to in_progress."""
+        state = DeletionState(
+            session_id="resume-in-progress",
+            start_date=date(2015, 2, 24),
+            end_date=date(2015, 2, 25),
+            total_count=3,
+            processed_count=1,
+            status=DeletionStatus.IN_PROGRESS,
+        )
+        await state_service.save(state)
+
+        with patch.object(
+            photo_service,
+            "_run_streaming_delete",
+            new_callable=AsyncMock,
+            return_value=MagicMock(mode="resume"),
+        ) as mock_run:
+            await photo_service.resume_deletion("resume-in-progress")
+
+        assert mock_run.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_resume_deletion_completes_already_fully_processed_session(
+        self, photo_service: PhotoService, state_service: StateService
+    ) -> None:
+        """A 100% processed interrupted session should complete immediately."""
+        state = DeletionState(
+            session_id="resume-already-done",
+            start_date=date(2015, 2, 24),
+            end_date=date(2015, 2, 25),
+            total_count=22,
+            processed_count=22,
+            deleted_count=22,
+            status=DeletionStatus.INTERRUPTED,
+        )
+        await state_service.save(state)
+
+        result = await photo_service.resume_deletion("resume-already-done")
+
+        assert result.mode == "resume"
+        assert result.target_count == 22
+        assert result.deleted_count == 22
+        persisted = await state_service.load("resume-already-done")
+        assert persisted is not None
+        assert persisted.status == DeletionStatus.COMPLETED
+
+    @pytest.mark.asyncio
+    async def test_delete_photos_cancel_after_final_item_marks_completed(
+        self, photo_service: PhotoService, state_service: StateService
+    ) -> None:
+        """Late cancel after the final deletion should not leave interrupted."""
+        cancel_event = asyncio.Event()
+
+        async def mock_streaming(
+            *_args: object, **kwargs: object
+        ) -> tuple[int, list[str]]:
+            on_deleted = kwargs.get("on_photo_deleted")
+            assert on_deleted is not None
+            await on_deleted("photo_0")  # type: ignore[operator]
+            await on_deleted("photo_1")  # type: ignore[operator]
+            cancel_event.set()
+            await on_deleted("photo_2")  # type: ignore[operator]
+            pytest.fail("final on_photo_deleted should raise after completion cancel")
+
+        with (
+            patch.object(
+                photo_service.operations,
+                "count_photos_in_range",
+                new_callable=AsyncMock,
+                return_value=3,
+            ),
+            patch.object(
+                photo_service.operations,
+                "delete_photos_in_range_streaming",
+                side_effect=mock_streaming,
+            ),
+        ):
+            result = await photo_service.delete_photos(
+                date(2015, 2, 24),
+                date(2015, 2, 25),
+                dry_run=False,
+                confirmed=True,
+                cancel_event=cancel_event,
+            )
+
+        assert result.deleted_count == 3
+        sessions = await state_service.list_sessions()
+        assert len(sessions) == 1
+        persisted = await state_service.load(sessions[0])
+        assert persisted is not None
+        assert persisted.status == DeletionStatus.COMPLETED
+
     # Cancellation tests
 
     @pytest.mark.asyncio

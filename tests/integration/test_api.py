@@ -156,6 +156,20 @@ class TestSessionEndpoints:
         del reset_active_session
 
     @pytest.mark.asyncio
+    async def test_concurrency_guard_blocks_account_create(
+        self,
+        client: AsyncClient,
+        mock_settings: object,  # noqa: ARG002
+        reset_active_session: None,
+    ) -> None:
+        """Creating a new account is blocked while a session is running."""
+        photos_router._active_session_id = "fake-running"
+
+        response = await client.post("/api/accounts")
+        assert response.status_code == 409
+        del reset_active_session
+
+    @pytest.mark.asyncio
     async def test_concurrency_guard_blocks_logout(
         self,
         client: AsyncClient,

@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 class StateService:
     """Manages persistence of deletion state for resume functionality."""
 
+    RESERVED_FILENAMES = {"accounts.json"}
+
     def __init__(self, state_dir: Path | None = None) -> None:
         """Initialize state service.
 
@@ -120,8 +122,18 @@ class StateService:
         """
         sessions = []
         for state_file in self.state_dir.glob("*.json"):
+            if state_file.name in self.RESERVED_FILENAMES:
+                continue
             sessions.append(state_file.stem)
         return sessions
+
+    async def _load_if_valid(self, session_id: str) -> DeletionState | None:
+        """Load a session, skipping malformed / non-session files."""
+        try:
+            return await self.load(session_id)
+        except StateError as e:
+            logger.warning("Skipping invalid state file for %s: %s", session_id, e)
+            return None
 
     async def find_interrupted(self) -> DeletionState | None:
         """Find any interrupted deletion session.
@@ -129,12 +141,16 @@ class StateService:
         Returns:
             DeletionState if an interrupted session exists, None otherwise
         """
+        latest: DeletionState | None = None
         for session_id in await self.list_sessions():
-            state = await self.load(session_id)
+            state = await self._load_if_valid(session_id)
             if state and state.status == DeletionStatus.INTERRUPTED:
-                logger.info("Found interrupted session: %s", session_id)
-                return state
-        return None
+                if latest is None or state.updated_at > latest.updated_at:
+                    latest = state
+
+        if latest is not None:
+            logger.info("Found interrupted session: %s", latest.session_id)
+        return latest
 
     async def find_in_progress(self) -> DeletionState | None:
         """Find any in-progress deletion session.
@@ -142,12 +158,16 @@ class StateService:
         Returns:
             DeletionState if an in-progress session exists, None otherwise
         """
+        latest: DeletionState | None = None
         for session_id in await self.list_sessions():
-            state = await self.load(session_id)
+            state = await self._load_if_valid(session_id)
             if state and state.status == DeletionStatus.IN_PROGRESS:
-                logger.info("Found in-progress session: %s", session_id)
-                return state
-        return None
+                if latest is None or state.updated_at > latest.updated_at:
+                    latest = state
+
+        if latest is not None:
+            logger.info("Found in-progress session: %s", latest.session_id)
+        return latest
 
     async def cleanup_completed(self) -> int:
         """Delete state files for completed sessions.
@@ -157,7 +177,7 @@ class StateService:
         """
         deleted_count = 0
         for session_id in await self.list_sessions():
-            state = await self.load(session_id)
+            state = await self._load_if_valid(session_id)
             if (
                 state
                 and state.status == DeletionStatus.COMPLETED

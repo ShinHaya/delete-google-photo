@@ -1,6 +1,7 @@
 """Unit tests for StateService."""
 
-from datetime import date
+import json
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -103,6 +104,21 @@ class TestStateService:
         assert "test-session-456" in sessions
 
     @pytest.mark.asyncio
+    async def test_list_sessions_ignores_accounts_registry(
+        self, state_service: StateService
+    ) -> None:
+        """Non-session JSON files in state_dir must be ignored."""
+        accounts_file = state_service.state_dir / "accounts.json"
+        accounts_file.write_text(
+            json.dumps({"accounts": [], "active_account_id": None}),
+            encoding="utf-8",
+        )
+
+        sessions = await state_service.list_sessions()
+
+        assert sessions == []
+
+    @pytest.mark.asyncio
     async def test_find_interrupted(self, state_service: StateService) -> None:
         """Test finding an interrupted session."""
         # Create a completed session
@@ -132,6 +148,36 @@ class TestStateService:
         assert found is not None
         assert found.session_id == "interrupted-session"
         assert found.status == DeletionStatus.INTERRUPTED
+
+    @pytest.mark.asyncio
+    async def test_find_interrupted_returns_most_recent_session(
+        self, state_service: StateService
+    ) -> None:
+        older = DeletionState(
+            session_id="older-interrupted",
+            start_date=date(2020, 1, 1),
+            end_date=date(2020, 1, 2),
+            total_count=10,
+            status=DeletionStatus.INTERRUPTED,
+            updated_at=datetime.now() - timedelta(days=1),
+        )
+        newer = DeletionState(
+            session_id="newer-interrupted",
+            start_date=date(2015, 2, 24),
+            end_date=date(2015, 2, 25),
+            total_count=12,
+            status=DeletionStatus.INTERRUPTED,
+            updated_at=datetime.now(),
+        )
+        await state_service.save(older)
+        await state_service.save(newer)
+
+        found = await state_service.find_interrupted()
+
+        assert found is not None
+        assert found.session_id == "newer-interrupted"
+        assert found.start_date == date(2015, 2, 24)
+        assert found.end_date == date(2015, 2, 25)
 
     @pytest.mark.asyncio
     async def test_find_interrupted_none(self, state_service: StateService) -> None:
@@ -167,6 +213,30 @@ class TestStateService:
         assert found is not None
         assert found.session_id == "in-progress-session"
         assert found.status == DeletionStatus.IN_PROGRESS
+
+    @pytest.mark.asyncio
+    async def test_find_interrupted_skips_invalid_non_session_json(
+        self, state_service: StateService
+    ) -> None:
+        """Malformed / foreign JSON files must not break interrupted lookup."""
+        accounts_file = state_service.state_dir / "accounts.json"
+        accounts_file.write_text(
+            json.dumps({"accounts": [{"account_id": "x"}]}),
+            encoding="utf-8",
+        )
+        interrupted = DeletionState(
+            session_id="real-interrupted",
+            start_date=date(2015, 2, 24),
+            end_date=date(2015, 2, 25),
+            total_count=5,
+            status=DeletionStatus.INTERRUPTED,
+        )
+        await state_service.save(interrupted)
+
+        found = await state_service.find_interrupted()
+
+        assert found is not None
+        assert found.session_id == "real-interrupted"
 
     @pytest.mark.asyncio
     async def test_cleanup_completed(self, state_service: StateService) -> None:

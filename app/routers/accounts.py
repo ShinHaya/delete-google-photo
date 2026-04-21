@@ -24,10 +24,7 @@ def _raise_if_session_active() -> None:
     if is_session_active():
         raise HTTPException(
             status_code=409,
-            detail=(
-                "A deletion session is already in progress. "
-                "Interrupt it or wait for completion before changing accounts."
-            ),
+            detail="削除セッションを実行中のため、アカウントは切り替えできません。中断するか、完了までお待ちください。",
         )
 
 
@@ -81,8 +78,8 @@ class AccountListResponse(BaseModel):
 async def list_accounts() -> AccountListResponse:
     """List all registered accounts."""
     svc = get_account_service()
-    accounts = svc.list_accounts()
-    active_id = svc.get_active_account_id()
+    active_id = svc.ensure_visible_active_account()
+    accounts = svc.list_visible_accounts()
 
     return AccountListResponse(
         accounts=[
@@ -102,6 +99,7 @@ async def list_accounts() -> AccountListResponse:
 @router.post("", response_model=AccountResponse)
 async def create_account() -> AccountResponse:
     """Create a new account entry (does not start login)."""
+    _raise_if_session_active()
     svc = get_account_service()
     account = svc.create_account()
     active_id = svc.get_active_account_id()

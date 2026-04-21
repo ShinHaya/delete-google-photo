@@ -58,7 +58,12 @@ class BrowserClient:
     @property
     def is_initialized(self) -> bool:
         """Check if browser is initialized."""
-        return self._context is not None
+        if self._context is None or self._page is None:
+            return False
+        try:
+            return not self._page.is_closed()
+        except Exception:
+            return False
 
     @property
     def page(self) -> Page:
