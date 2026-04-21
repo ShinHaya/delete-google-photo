@@ -1,5 +1,6 @@
 """Photo service for managing photo deletion operations."""
 
+import asyncio
 import logging
 from collections.abc import Callable
 from datetime import date
@@ -8,9 +9,9 @@ from typing import Any
 from app.browser.auth import GoogleAuthenticator
 from app.browser.client import BrowserClient
 from app.browser.operations import PhotoOperations
-from app.exceptions import InvalidDateRangeError
+from app.exceptions import DeletionCancelledError, InvalidDateRangeError
 from app.models.photo import DeletionResult, DryRunResult
-from app.models.state import DeletionState
+from app.models.state import DeletionState, DeletionStatus
 from app.services.state_service import StateService
 
 logger = logging.getLogger(__name__)
@@ -126,6 +127,8 @@ class PhotoService:
         confirmed: bool = False,
         expected_total: int | None = None,
         on_progress: ProgressCallback | None = None,
+        cancel_event: asyncio.Event | None = None,
+        state: DeletionState | None = None,
     ) -> DeletionResult:
         """Delete photos in a date range.
 
@@ -141,6 +144,14 @@ class PhotoService:
                 and delete photos. This roughly halves the wall-clock time
                 when the caller has already performed a dry run.
             on_progress: Optional callback for progress updates
+            cancel_event: Optional ``asyncio.Event``. When set mid-run,
+                the streaming deleter exits at the next checkpoint and
+                the session is marked ``interrupted`` (resumable).
+            state: Optional pre-created ``DeletionState``. Callers that
+                need the ``session_id`` before scheduling the work
+                (typical for async background tasks) can construct the
+                state up front and pass it in. If omitted, a new state
+                is created internally.
 
         Returns:
             DeletionResult with deletion statistics
@@ -190,29 +201,158 @@ class PhotoService:
             )
 
         if total_count == 0:
+            if state is not None:
+                # Caller-provided state: record completion so polling can
+                # observe "done" even for empty ranges.
+                state.total_count = 0
+                state.mark_completed()
+                await self.state_service.save(state)
             return DeletionResult(
                 mode="delete",
                 target_count=0,
                 deleted_count=0,
             )
 
-        # Create state for tracking
-        state = DeletionState(
-            start_date=start_date,
-            end_date=end_date,
-            total_count=total_count,
-        )
+        # Create state for tracking (unless caller already supplied one)
+        if state is None:
+            state = DeletionState(
+                start_date=start_date,
+                end_date=end_date,
+                total_count=total_count,
+            )
+        else:
+            state.total_count = total_count
         state.mark_in_progress()
         await self.state_service.save(state)
 
-        # Track progress in closures so we can persist state frequently
-        # without adding parameters to the operations layer.
+        return await self._run_streaming_delete(
+            state=state,
+            start_date=start_date,
+            end_date=end_date,
+            total_count=total_count,
+            mode="delete",
+            on_progress=on_progress,
+            cancel_event=cancel_event,
+        )
+
+    async def resume_deletion(
+        self,
+        session_id: str,
+        on_progress: ProgressCallback | None = None,
+        cancel_event: asyncio.Event | None = None,
+    ) -> DeletionResult:
+        """Resume an interrupted deletion session.
+
+        Args:
+            session_id: Session ID to resume
+            on_progress: Optional callback for progress updates
+            cancel_event: Optional cancel signal (see ``delete_photos``).
+
+        Returns:
+            DeletionResult with deletion statistics
+
+        Raises:
+            ValueError: If session not found or not resumable
+        """
+        state = await self.state_service.load(session_id)
+
+        if state is None:
+            raise ValueError(f"Session not found: {session_id}")
+
+        if state.status not in (
+            DeletionStatus.INTERRUPTED,
+            DeletionStatus.IN_PROGRESS,
+        ):
+            raise ValueError(f"Session is not resumable (status: {state.status})")
+
+        # If the prior run already reached the expected total, there is
+        # nothing left to resume. This can happen when an interrupt lands
+        # just after the final deletion callback increments progress but
+        # before the task marks the session completed.
+        if state.total_count > 0 and state.processed_count >= state.total_count:
+            state.mark_completed()
+            await self.state_service.save(state)
+            return DeletionResult(
+                mode="resume",
+                target_count=state.total_count,
+                deleted_count=state.deleted_count,
+                failed_count=state.failed_count,
+                failed_photo_ids=list(state.failed_photo_ids),
+            )
+
+        # Ensure authenticated (resume bypasses delete_photos, so we must
+        # check here explicitly).
+        await self.ensure_authenticated()
+
+        # Resume strategy: just re-run the streaming deletion over the
+        # same range. Photos that were already deleted in the previous run
+        # have been moved to trash and no longer appear in the main
+        # timeline, so the streaming deleter naturally skips them. There
+        # is no need to match ``last_processed_id`` — that was only needed
+        # for the old pre-collect + iterate flow, which could re-see
+        # already-processed photos in its pre-collected list.
+        #
+        # NOTE: callers that schedule resume as a background task should
+        # transition the state to ``in_progress`` and persist it BEFORE
+        # invoking this method, so polling clients don't observe the
+        # stale ``interrupted`` status. We still flip the in-memory
+        # status here as a defensive default for callers that pass a
+        # freshly-loaded state.
+        if state.status != DeletionStatus.IN_PROGRESS:
+            state.mark_in_progress()
+            await self.state_service.save(state)
+
+        return await self._run_streaming_delete(
+            state=state,
+            start_date=state.start_date,
+            end_date=state.end_date,
+            total_count=state.total_count,
+            mode="resume",
+            on_progress=on_progress,
+            cancel_event=cancel_event,
+        )
+
+    async def _run_streaming_delete(
+        self,
+        *,
+        state: DeletionState,
+        start_date: date,
+        end_date: date,
+        total_count: int,
+        mode: str,
+        on_progress: ProgressCallback | None,
+        cancel_event: asyncio.Event | None,
+    ) -> DeletionResult:
+        """Shared core for ``delete_photos`` and ``resume_deletion``.
+
+        Runs the streaming deleter with progress + cancel hooks, then
+        marks the session as completed / interrupted / failed as
+        appropriate and persists the final result counts onto ``state``.
+        """
         progress_save_every = 5
 
         async def _on_photo_deleted(photo_id: str) -> None:
             state.increment_processed(photo_id)
             if state.processed_count % progress_save_every == 0:
                 await self.state_service.save(state)
+            # Also treat on_photo_deleted as a cancel checkpoint — it is
+            # the tightest-grain callback we have, so checking here makes
+            # stop latency at most one photo while the streaming deleter
+            # is actively progressing.
+            if cancel_event is not None and cancel_event.is_set():
+                raise DeletionCancelledError(
+                    f"Deletion cancelled after {state.processed_count} photo(s)"
+                )
+
+        async def _on_photos_failed(photo_ids: list[str]) -> None:
+            # Persist failures incrementally so a subsequent cancel can't
+            # drop them. Without this, the streaming deleter accumulates
+            # failures in a local list and a cancel raised before return
+            # would discard the whole list.
+            if not photo_ids:
+                return
+            state.record_failure(photo_ids)
+            await self.state_service.save(state)
 
         async def _on_progress(processed: int, total: int, photo_id: str) -> None:
             if on_progress is not None:
@@ -228,96 +368,45 @@ class PhotoService:
                 expected_total=total_count,
                 on_progress=_on_progress,
                 on_photo_deleted=_on_photo_deleted,
+                on_photos_failed=_on_photos_failed,
+                cancel_event=cancel_event,
             )
 
-            # Mark completed
+            # ``failed_ids`` from operations is the authoritative end-of-run
+            # list; ``state.failed_photo_ids`` already holds the same ids
+            # because we appended them via ``_on_photos_failed``. Replace
+            # rather than append to avoid double-counting.
+            state.set_result_counts(deleted_count, failed_ids)
             state.mark_completed()
             await self.state_service.save(state)
 
+        except DeletionCancelledError:
+            # ``deleted_count`` on the state was kept in sync via
+            # ``increment_processed``, and ``failed_photo_ids`` was
+            # appended to via ``_on_photos_failed`` before the cancel
+            # checkpoint, so neither needs to be reconstructed here.
+            if state.processed_count >= total_count:
+                state.mark_completed()
+            else:
+                state.mark_interrupted()
+            await self.state_service.save(state)
+            return DeletionResult(
+                mode=mode,
+                target_count=total_count,
+                deleted_count=state.deleted_count,
+                failed_count=state.failed_count,
+                failed_photo_ids=list(state.failed_photo_ids),
+            )
         except Exception:
-            # Mark interrupted on unexpected error
+            # Unknown error: mark interrupted so the user can try to
+            # resume, but re-raise so the caller can surface the failure.
             state.mark_interrupted()
             await self.state_service.save(state)
             raise
 
         return DeletionResult(
-            mode="delete",
+            mode=mode,
             target_count=total_count,
-            deleted_count=deleted_count,
-            failed_count=len(failed_ids),
-            failed_photo_ids=failed_ids,
-        )
-
-    async def resume_deletion(
-        self,
-        session_id: str,
-        on_progress: ProgressCallback | None = None,
-    ) -> DeletionResult:
-        """Resume an interrupted deletion session.
-
-        Args:
-            session_id: Session ID to resume
-            on_progress: Optional callback for progress updates
-
-        Returns:
-            DeletionResult with deletion statistics
-
-        Raises:
-            ValueError: If session not found or not resumable
-        """
-        state = await self.state_service.load(session_id)
-
-        if state is None:
-            raise ValueError(f"Session not found: {session_id}")
-
-        if not state.is_resumable:
-            raise ValueError(f"Session is not resumable (status: {state.status})")
-
-        # Resume strategy: just re-run the streaming deletion over the
-        # same range. Photos that were already deleted in the previous run
-        # have been moved to trash and no longer appear in the main
-        # timeline, so the streaming deleter naturally skips them. There
-        # is no need to match ``last_processed_id`` — that was only needed
-        # for the old pre-collect + iterate flow, which could re-see
-        # already-processed photos in its pre-collected list.
-
-        state.mark_in_progress()
-        await self.state_service.save(state)
-
-        progress_save_every = 5
-
-        async def _on_photo_deleted(photo_id: str) -> None:
-            state.increment_processed(photo_id)
-            if state.processed_count % progress_save_every == 0:
-                await self.state_service.save(state)
-
-        async def _on_progress(processed: int, total: int, photo_id: str) -> None:
-            if on_progress is not None:
-                await on_progress(processed, total, photo_id)
-
-        try:
-            (
-                deleted_count,
-                failed_ids,
-            ) = await self.operations.delete_photos_in_range_streaming(
-                state.start_date,
-                state.end_date,
-                expected_total=state.total_count,
-                on_progress=_on_progress,
-                on_photo_deleted=_on_photo_deleted,
-            )
-
-            state.mark_completed()
-            await self.state_service.save(state)
-
-        except Exception:
-            state.mark_interrupted()
-            await self.state_service.save(state)
-            raise
-
-        return DeletionResult(
-            mode="resume",
-            target_count=state.total_count,
             deleted_count=deleted_count,
             failed_count=len(failed_ids),
             failed_photo_ids=failed_ids,

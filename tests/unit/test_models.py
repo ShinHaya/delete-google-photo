@@ -212,7 +212,70 @@ class TestDeletionState:
         )
         state.increment_processed("photo_1")
         assert state.processed_count == 1
+        # Each successful deletion bumps the user-facing deleted_count too.
+        assert state.deleted_count == 1
         assert state.last_processed_id == "photo_1"
+
+    def test_default_result_counts(self) -> None:
+        """Newly created state defaults to zero deleted/failed counts."""
+        state = DeletionState(
+            session_id="test-session",
+            start_date=date(2020, 1, 1),
+            end_date=date(2020, 12, 31),
+            total_count=100,
+        )
+        assert state.deleted_count == 0
+        assert state.failed_count == 0
+        assert state.failed_photo_ids == []
+
+    def test_record_failure_appends(self) -> None:
+        """record_failure should append IDs and keep failed_count in sync."""
+        state = DeletionState(
+            session_id="test-session",
+            start_date=date(2020, 1, 1),
+            end_date=date(2020, 12, 31),
+            total_count=100,
+        )
+        state.record_failure(["photo_a"])
+        state.record_failure(["photo_b", "photo_c"])
+        assert state.failed_photo_ids == ["photo_a", "photo_b", "photo_c"]
+        assert state.failed_count == 3
+
+    def test_set_result_counts_overwrites(self) -> None:
+        """set_result_counts should replace the partial running totals."""
+        state = DeletionState(
+            session_id="test-session",
+            start_date=date(2020, 1, 1),
+            end_date=date(2020, 12, 31),
+            total_count=100,
+        )
+        state.increment_processed("p_1")
+        state.record_failure(["p_old"])
+
+        state.set_result_counts(50, ["p_x", "p_y"])
+
+        assert state.deleted_count == 50
+        assert state.failed_photo_ids == ["p_x", "p_y"]
+        assert state.failed_count == 2
+
+    def test_legacy_state_json_loads(self) -> None:
+        """State JSON written before the new fields existed must still load."""
+        legacy = {
+            "session_id": "legacy-session",
+            "start_date": "2020-01-01",
+            "end_date": "2020-12-31",
+            "total_count": 100,
+            "processed_count": 50,
+            "last_processed_id": "photo_50",
+            "status": "in_progress",
+            "created_at": "2024-01-01T00:00:00",
+            "updated_at": "2024-01-01T01:00:00",
+        }
+        state = DeletionState(**legacy)
+        assert state.session_id == "legacy-session"
+        assert state.deleted_count == 0
+        assert state.failed_count == 0
+        assert state.failed_photo_ids == []
 
     def test_status_transitions(self) -> None:
         """Test status transition methods."""

@@ -12,6 +12,22 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 
+
+def _raise_if_session_active() -> None:
+    """Reject account ops that would disrupt a running deletion.
+
+    Imported lazily to avoid a circular import between ``accounts`` and
+    ``photos``.
+    """
+    from app.routers.photos import is_session_active
+
+    if is_session_active():
+        raise HTTPException(
+            status_code=409,
+            detail="削除セッションを実行中のため、アカウントは切り替えできません。中断するか、完了までお待ちください。",
+        )
+
+
 # Module-level singletons, initialized by init_account_dependencies()
 _account_service: AccountService | None = None
 _browser_manager: BrowserManager | None = None
@@ -62,8 +78,8 @@ class AccountListResponse(BaseModel):
 async def list_accounts() -> AccountListResponse:
     """List all registered accounts."""
     svc = get_account_service()
-    accounts = svc.list_accounts()
-    active_id = svc.get_active_account_id()
+    active_id = svc.ensure_visible_active_account()
+    accounts = svc.list_visible_accounts()
 
     return AccountListResponse(
         accounts=[
@@ -83,6 +99,7 @@ async def list_accounts() -> AccountListResponse:
 @router.post("", response_model=AccountResponse)
 async def create_account() -> AccountResponse:
     """Create a new account entry (does not start login)."""
+    _raise_if_session_active()
     svc = get_account_service()
     account = svc.create_account()
     active_id = svc.get_active_account_id()
@@ -99,6 +116,7 @@ async def create_account() -> AccountResponse:
 @router.post("/{account_id}/activate", response_model=AccountResponse)
 async def activate_account(account_id: str) -> AccountResponse:
     """Switch the active account."""
+    _raise_if_session_active()
     svc = get_account_service()
     mgr = get_browser_manager()
 
@@ -122,6 +140,7 @@ async def activate_account(account_id: str) -> AccountResponse:
 @router.delete("/{account_id}")
 async def delete_account(account_id: str) -> dict[str, bool]:
     """Delete an account and its browser profile."""
+    _raise_if_session_active()
     svc = get_account_service()
     mgr = get_browser_manager()
 
@@ -142,6 +161,7 @@ async def login_account(account_id: str) -> dict[str, bool | str]:
     """Start login flow for a specific account."""
     from app.browser.auth import GoogleAuthenticator
 
+    _raise_if_session_active()
     svc = get_account_service()
     mgr = get_browser_manager()
 
@@ -198,6 +218,7 @@ async def login_account(account_id: str) -> dict[str, bool | str]:
 @router.post("/{account_id}/logout")
 async def logout_account(account_id: str) -> dict[str, bool]:
     """Logout from a specific account (clears its browser session)."""
+    _raise_if_session_active()
     svc = get_account_service()
     mgr = get_browser_manager()
 

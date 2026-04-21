@@ -13,7 +13,12 @@ from playwright._impl._errors import TimeoutError as PlaywrightTimeoutError
 from app.browser.client import BrowserClient
 from app.browser.date_parser import parse_date_from_aria_label
 from app.config import settings
-from app.exceptions import PhotoDeletionError, PhotoNotFoundError, RateLimitError
+from app.exceptions import (
+    DeletionCancelledError,
+    PhotoDeletionError,
+    PhotoNotFoundError,
+    RateLimitError,
+)
 from app.models.photo import Photo, PhotoSummary
 from app.utils.retry import with_retry
 
@@ -1278,6 +1283,9 @@ class PhotoOperations:
         expected_total: int | None = None,
         on_progress: ProgressCallback | None = None,
         on_photo_deleted: Callable[[str], Coroutine[Any, Any, None]] | None = None,
+        on_photos_failed: Callable[[list[str]], Coroutine[Any, Any, None]]
+        | None = None,
+        cancel_event: asyncio.Event | None = None,
         max_iterations: int = 10000,
         scroll_pause: float = 1.2,
         post_boundary_stable_threshold: int = 5,
@@ -1309,6 +1317,19 @@ class PhotoOperations:
             on_photo_deleted: Optional callback invoked with the deleted
                 photo id immediately after a successful deletion. Use this
                 to update persistent state for resume support.
+            on_photos_failed: Optional callback invoked with the list of
+                photo ids that failed in the most recent bulk-delete
+                attempt. Fired after the local ``failed_ids`` list grows,
+                so callers can persist failures incrementally and avoid
+                losing them if a subsequent ``cancel_event`` raises
+                before the function returns.
+            cancel_event: Optional ``asyncio.Event``. When set, the loop
+                exits at the next checkpoint by raising
+                :class:`DeletionCancelledError`. Checkpoints are placed at
+                each pass boundary, each iteration boundary, before/after
+                selection + trash clicks, and before each scroll pause —
+                so user-facing stop latency is bounded by the longest
+                single UI step, not by a whole pass.
             max_iterations: Safety cap on the main loop iterations.
             scroll_pause: Seconds to wait after a scroll for new content.
             post_boundary_stable_threshold: After we have seen any photo
@@ -1326,6 +1347,13 @@ class PhotoOperations:
         skip_ids: set[str] = set()
         total = expected_total if expected_total is not None else -1
 
+        def _check_cancel() -> None:
+            if cancel_event is not None and cancel_event.is_set():
+                raise DeletionCancelledError(
+                    "Deletion cancelled by user (deleted so far: "
+                    f"{len(deleted_ids)}, failed: {len(failed_ids)})"
+                )
+
         # Multi-pass loop: Google Photos virtualizes the grid, so a single
         # top-down scroll pass can miss photos that were unloaded from the
         # DOM after we scrolled past them. We re-navigate and re-scan after
@@ -1333,15 +1361,18 @@ class PhotoOperations:
         # finds zero in-range photos.
         max_passes = 10
         for pass_num in range(max_passes):
+            _check_cancel()
             await self.navigate_to_date_range(start_date, end_date)
             deleted_in_pass = 0
             seen_before_start = False
             post_boundary_empty = 0
 
             for iteration in range(max_iterations):
+                _check_cancel()
                 # Recover any UI state from a prior failure before extracting.
                 await self._dismiss_open_dialog()
                 await self._exit_selection_mode()
+                _check_cancel()
 
                 # Bulk-select everything in range currently visible.
                 selection = await self._bulk_select_visible_in_range(
@@ -1382,7 +1413,9 @@ class PhotoOperations:
                         # Give the toolbar a moment to render after the
                         # selection clicks.
                         await asyncio.sleep(0.6)
+                        _check_cancel()
                         await self._click_trash_and_confirm()
+                        _check_cancel()
                         deleted_ids.update(fresh_ids)
                         deleted_in_pass += len(fresh_ids)
                         if on_photo_deleted is not None:
@@ -1408,8 +1441,15 @@ class PhotoOperations:
                         )
                         failed_ids.extend(fresh_ids)
                         skip_ids.update(fresh_ids)
+                        # Notify the caller before any cancel checkpoint
+                        # so they can persist these ids; otherwise an
+                        # interrupt landing right after this except block
+                        # would drop them.
+                        if on_photos_failed is not None:
+                            await on_photos_failed(list(fresh_ids))
                         await self._dismiss_open_dialog()
                         await self._exit_selection_mode()
+                        _check_cancel()
                     # Loop back: re-extract the (now-shifted) DOM.
                     continue
 
@@ -1444,6 +1484,7 @@ class PhotoOperations:
                         break
 
                 # Scroll to fetch more photos.
+                _check_cancel()
                 await self._scroll_timeline()
                 await asyncio.sleep(scroll_pause)
             else:

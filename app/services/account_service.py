@@ -81,6 +81,22 @@ class AccountService:
         registry = self._load_registry()
         return list(registry.accounts)
 
+    @staticmethod
+    def is_placeholder_account(account: Account) -> bool:
+        """Whether the account is still an unlabeled placeholder."""
+        return not account.email and not account.display_name
+
+    def list_visible_accounts(self) -> list[Account]:
+        """List accounts that should be shown in the UI.
+
+        Placeholder accounts can be created transiently before login
+        succeeds. They should not be shown in the account dropdown once
+        at least one labeled account exists.
+        """
+        accounts = self.list_accounts()
+        visible = [a for a in accounts if not self.is_placeholder_account(a)]
+        return visible if visible else accounts
+
     def get_active_account(self) -> Account | None:
         """Get the currently active account."""
         registry = self._load_registry()
@@ -89,6 +105,28 @@ class AccountService:
     def get_active_account_id(self) -> str | None:
         """Get the currently active account ID."""
         registry = self._load_registry()
+        return registry.active_account_id
+
+    def ensure_visible_active_account(self) -> str | None:
+        """Prefer a labeled account as active when available.
+
+        Returns the effective active account id after normalization.
+        """
+        registry = self._load_registry()
+        active = registry.get_active_account()
+        if active is not None and not self.is_placeholder_account(active):
+            return active.account_id
+
+        visible = [a for a in registry.accounts if not self.is_placeholder_account(a)]
+        if not visible:
+            return registry.active_account_id
+
+        registry.active_account_id = visible[0].account_id
+        self._save_registry()
+        logger.info(
+            "Normalized active account to visible account %s",
+            registry.active_account_id,
+        )
         return registry.active_account_id
 
     def set_active_account(self, account_id: str) -> Account:

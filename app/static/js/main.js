@@ -66,6 +66,11 @@ let currentSessionId = null;
 let isProcessing = false;
 let isAuthenticated = false;
 
+// Polling interval while a deletion runs (ms). The server-side state
+// file is only flushed every ~5 photos, so polling much faster than this
+// mostly just burns cache. Too slow feels unresponsive to the user.
+const POLL_INTERVAL_MS = 1500;
+
 // API Functions
 async function apiRequest(endpoint, options = {}) {
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
@@ -81,6 +86,14 @@ async function apiRequest(endpoint, options = {}) {
 
     if (!response.ok) {
         const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        // 409 from the concurrency guard: translate to a user-facing
+        // Japanese message so the UI can surface it clearly.
+        if (response.status === 409) {
+            const detail =
+                error.detail ||
+                '別の処理が実行中のため、この操作は受け付けられませんでした';
+            throw new Error(detail);
+        }
         throw new Error(error.detail || `HTTP ${response.status}`);
     }
 
@@ -94,7 +107,7 @@ async function performDryRun(startDate, endDate) {
     });
 }
 
-async function deletePhotos(startDate, endDate, expectedTotal) {
+async function startDeletion(startDate, endDate, expectedTotal) {
     return apiRequest('/api/photos/delete', {
         method: 'POST',
         body: JSON.stringify({
@@ -103,6 +116,16 @@ async function deletePhotos(startDate, endDate, expectedTotal) {
             confirmed: true,
             expected_total: expectedTotal,
         }),
+    });
+}
+
+async function getSessionState(sessionId) {
+    return apiRequest(`/api/photos/sessions/${sessionId}`);
+}
+
+async function interruptSession(sessionId) {
+    return apiRequest(`/api/photos/sessions/${sessionId}/interrupt`, {
+        method: 'POST',
     });
 }
 
@@ -440,6 +463,76 @@ async function handleDryRun() {
     }
 }
 
+// Poll a session until it reaches a terminal status. Resolves with the
+// final session state. Rejects only on network / API errors.
+async function pollUntilDone(sessionId) {
+    while (true) {
+        const state = await getSessionState(sessionId);
+        updateProgress(state.processed_count || 0, state.total_count || 0);
+
+        if (
+            state.status === 'completed' ||
+            state.status === 'interrupted' ||
+            state.status === 'failed'
+        ) {
+            return state;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    }
+}
+
+function formatCompletionMessage(state) {
+    // See the old synchronous handler for the rationale behind diffing
+    // against target_count instead of trusting failed_count alone —
+    // Google Photos virtualization can drop photos silently.
+    const target = state.total_count || 0;
+    const deleted = state.deleted_count || 0;
+    const missed = Math.max(0, target - deleted);
+    if (missed > 0) {
+        return `完了: ${deleted}枚削除、${missed}枚削除できませんでした（手動で削除してください）`;
+    }
+    return `完了: ${deleted}枚を削除しました`;
+}
+
+async function runWithPolling(sessionId, { isResume = false } = {}) {
+    currentSessionId = sessionId;
+    isProcessing = true;
+    enableButtons(false);
+    showSection(elements.interruptedAlert, false);
+    showSection(elements.resultsSection, false);
+    showSection(elements.progressSection, true);
+    elements.interruptBtn.disabled = false;
+    setStatus(isResume ? '再開中...' : '削除中...');
+
+    try {
+        const finalState = await pollUntilDone(sessionId);
+
+        showSection(elements.progressSection, false);
+
+        if (finalState.status === 'interrupted') {
+            setStatus(
+                `中断されました: ${finalState.deleted_count || 0} / ${finalState.total_count || 0} 枚処理済み。再開できます`
+            );
+            currentSessionId = finalState.session_id;
+            await checkInterruptedSession();
+        } else if (finalState.status === 'failed') {
+            setStatus('エラー: 削除処理が失敗しました', true);
+            currentSessionId = null;
+        } else {
+            setStatus(formatCompletionMessage(finalState));
+            currentSessionId = null;
+            currentDryRunResult = null;
+        }
+    } catch (error) {
+        setStatus(`エラー: ${error.message}`, true);
+        showSection(elements.progressSection, false);
+    } finally {
+        isProcessing = false;
+        enableButtons(true);
+    }
+}
+
 async function handleDelete() {
     if (!currentDryRunResult || currentDryRunResult.total_count === 0) {
         setStatus('削除する写真がありません', true);
@@ -469,42 +562,13 @@ async function handleDelete() {
     }
 
     try {
-        isProcessing = true;
-        enableButtons(false);
-        showSection(elements.resultsSection, false);
-        showSection(elements.progressSection, true);
         updateProgress(0, count);
-        setStatus('削除中...');
-
-        const result = await deletePhotos(startDate, endDate, count);
-
-        showSection(elements.progressSection, false);
-        updateProgress(result.deleted_count, count);
-
-        // "削除できなかった" = ドライランで検出された件数 − 実際に削除された件数。
-        // failed_count は明示的な削除エラーのみを数えるため、グループ化漏れ
-        // などの「静かな取りこぼし」は拾えない。差分で計算する方がユーザー
-        // が自力で残りを削除するときに参考になる。
-        const missed = Math.max(0, count - result.deleted_count);
-        if (missed > 0) {
-            // isError=false: setStatus(text, true) だとステータス欄と
-            // エラーメッセージ欄の両方に同じ文字列を出してしまうため、
-            // 部分成功はエラー扱いせず status 欄のみに表示する。
-            setStatus(
-                `完了: ${result.deleted_count}枚削除、${missed}枚削除できませんでした（手動で削除してください）`
-            );
-        } else {
-            setStatus(`完了: ${result.deleted_count}枚を削除しました`);
-        }
-
-        currentDryRunResult = null;
-        enableButtons(true);
+        const { session_id } = await startDeletion(startDate, endDate, count);
+        await runWithPolling(session_id);
     } catch (error) {
         setStatus(`エラー: ${error.message}`, true);
         showSection(elements.progressSection, false);
         enableButtons(true);
-    } finally {
-        isProcessing = false;
     }
 }
 
@@ -512,36 +576,24 @@ async function handleResume() {
     if (!currentSessionId) return;
 
     try {
-        isProcessing = true;
-        enableButtons(false);
-        showSection(elements.interruptedAlert, false);
-        showSection(elements.progressSection, true);
-        setStatus('再開中...');
-
-        const result = await resumeSession(currentSessionId);
-
-        showSection(elements.progressSection, false);
-
-        const missedResume = Math.max(
-            0,
-            (result.target_count || 0) - result.deleted_count
-        );
-        if (missedResume > 0) {
-            setStatus(
-                `完了: ${result.deleted_count}枚削除、${missedResume}枚削除できませんでした（手動で削除してください）`
-            );
-        } else {
-            setStatus(`完了: ${result.deleted_count}枚を削除しました`);
-        }
-
-        currentSessionId = null;
-        enableButtons(true);
+        const { session_id } = await resumeSession(currentSessionId);
+        await runWithPolling(session_id, { isResume: true });
     } catch (error) {
         setStatus(`エラー: ${error.message}`, true);
         showSection(elements.progressSection, false);
         enableButtons(true);
-    } finally {
-        isProcessing = false;
+    }
+}
+
+async function handleInterrupt() {
+    if (!currentSessionId) return;
+    elements.interruptBtn.disabled = true;
+    setStatus('中断要求を送信しました。処理が停止するまでお待ちください...');
+    try {
+        await interruptSession(currentSessionId);
+    } catch (error) {
+        setStatus(`中断エラー: ${error.message}`, true);
+        elements.interruptBtn.disabled = false;
     }
 }
 
@@ -588,6 +640,7 @@ function init() {
     elements.deleteBtn.addEventListener('click', handleDelete);
     elements.resumeBtn.addEventListener('click', handleResume);
     elements.cancelSessionBtn.addEventListener('click', handleCancelSession);
+    elements.interruptBtn.addEventListener('click', handleInterrupt);
     elements.loginBtn.addEventListener('click', handleLogin);
     elements.logoutBtn.addEventListener('click', handleLogout);
 
