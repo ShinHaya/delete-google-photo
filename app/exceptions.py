@@ -75,3 +75,15 @@ class InvalidDateRangeError(GooglePhotoDeleteError):
 
     def __init__(self, message: str = "Invalid date range") -> None:
         super().__init__(message)
+
+
+class DeletionCancelledError(GooglePhotoDeleteError):
+    """Raised when a deletion run is cancelled via the interrupt API.
+
+    Distinguished from unexpected exceptions so the service layer can
+    persist ``interrupted`` state cleanly instead of marking the session
+    as ``failed``.
+    """
+
+    def __init__(self, message: str = "Deletion cancelled") -> None:
+        super().__init__(message)

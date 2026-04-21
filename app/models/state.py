@@ -33,6 +33,20 @@ class DeletionState(BaseModel):
     last_processed_id: str | None = Field(
         None, description="ID of the last processed photo"
     )
+    deleted_count: int = Field(
+        0,
+        ge=0,
+        description="Number of photos successfully moved to trash so far",
+    )
+    failed_count: int = Field(
+        0,
+        ge=0,
+        description="Number of photos that explicitly failed to delete",
+    )
+    failed_photo_ids: list[str] = Field(
+        default_factory=list,
+        description="IDs of photos that explicitly failed to delete",
+    )
     status: DeletionStatus = Field(
         DeletionStatus.PENDING, description="Current status of the deletion"
     )
@@ -87,7 +101,27 @@ class DeletionState(BaseModel):
     def increment_processed(self, photo_id: str) -> None:
         """Increment processed count and update last processed ID."""
         self.processed_count += 1
+        self.deleted_count += 1
         self.last_processed_id = photo_id
+        self.updated_at = datetime.now()
+
+    def record_failure(self, photo_ids: list[str]) -> None:
+        """Record photos that explicitly failed to delete."""
+        if not photo_ids:
+            return
+        self.failed_photo_ids = [*self.failed_photo_ids, *photo_ids]
+        self.failed_count = len(self.failed_photo_ids)
+        self.updated_at = datetime.now()
+
+    def set_result_counts(
+        self,
+        deleted_count: int,
+        failed_photo_ids: list[str],
+    ) -> None:
+        """Overwrite result counts with final values from the streaming deleter."""
+        self.deleted_count = deleted_count
+        self.failed_photo_ids = list(failed_photo_ids)
+        self.failed_count = len(self.failed_photo_ids)
         self.updated_at = datetime.now()
 
     def mark_in_progress(self) -> None:

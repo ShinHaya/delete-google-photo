@@ -81,6 +81,15 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     browser_manager = BrowserManager(account_service)
     accounts.init_account_dependencies(account_service, browser_manager)
 
+    # Recover any sessions left "in_progress" by a prior crash / restart.
+    # Without this, the UI would never see them as resumable.
+    try:
+        await photos.recover_stale_in_progress_states()
+    except Exception as e:  # noqa: BLE001 — startup must not be fatal here
+        logging.getLogger(__name__).warning(
+            "Failed to recover stale in_progress states: %s", e
+        )
+
     try:
         yield
     finally:

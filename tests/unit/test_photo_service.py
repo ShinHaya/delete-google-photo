@@ -1,12 +1,13 @@
 """Unit tests for PhotoService."""
 
+import asyncio
 from datetime import date
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.exceptions import InvalidDateRangeError
+from app.exceptions import DeletionCancelledError, InvalidDateRangeError
 from app.models.state import DeletionState, DeletionStatus
 from app.services.photo_service import PhotoService
 from app.services.state_service import StateService
@@ -383,3 +384,104 @@ class TestPhotoService:
 
         with pytest.raises(ValueError, match="not resumable"):
             await photo_service.resume_deletion("completed")
+
+    # Cancellation tests
+
+    @pytest.mark.asyncio
+    async def test_delete_photos_cancel_event_marks_interrupted(
+        self, photo_service: PhotoService, state_service: StateService
+    ) -> None:
+        """A cancel_event raised mid-run leaves state INTERRUPTED + resumable."""
+        cancel_event = asyncio.Event()
+
+        async def mock_streaming(
+            *_args: object, **kwargs: object
+        ) -> tuple[int, list[str]]:
+            on_deleted = kwargs.get("on_photo_deleted")
+            # Delete two photos, then trip the cancel signal. The service
+            # bumps deleted_count first and only then checks cancel_event,
+            # so both photos are counted before the next callback raises.
+            assert on_deleted is not None
+            await on_deleted("photo_0")  # type: ignore[operator]
+            await on_deleted("photo_1")  # type: ignore[operator]
+            cancel_event.set()
+            await on_deleted("photo_2")  # type: ignore[operator]  # raises
+            pytest.fail("on_photo_deleted should have raised after cancel")
+
+        with (
+            patch.object(
+                photo_service.operations,
+                "count_photos_in_range",
+                new_callable=AsyncMock,
+                return_value=10,
+            ),
+            patch.object(
+                photo_service.operations,
+                "delete_photos_in_range_streaming",
+                side_effect=mock_streaming,
+            ),
+        ):
+            result = await photo_service.delete_photos(
+                date(2020, 1, 1),
+                date(2020, 1, 31),
+                dry_run=False,
+                confirmed=True,
+                cancel_event=cancel_event,
+            )
+
+        # The DeletionResult reflects partial progress (3rd photo was
+        # intercepted before it could be counted, the first 2 completed).
+        assert result.deleted_count == 3  # photo_2 was still counted before cancel check
+        assert result.target_count == 10
+
+        # The persisted state is resumable.
+        sessions = await state_service.list_sessions()
+        assert len(sessions) == 1
+        state = await state_service.load(sessions[0])
+        assert state is not None
+        assert state.status == DeletionStatus.INTERRUPTED
+        assert state.is_resumable
+        assert state.deleted_count == 3
+
+    @pytest.mark.asyncio
+    async def test_delete_photos_persists_final_result_counts(
+        self, photo_service: PhotoService, state_service: StateService
+    ) -> None:
+        """On completion, state must hold deleted_count + failed_photo_ids."""
+
+        async def mock_streaming(
+            *_args: object, **kwargs: object
+        ) -> tuple[int, list[str]]:
+            on_deleted = kwargs.get("on_photo_deleted")
+            assert on_deleted is not None
+            await on_deleted("photo_0")  # type: ignore[operator]
+            return 1, ["photo_failed"]
+
+        with (
+            patch.object(
+                photo_service.operations,
+                "count_photos_in_range",
+                new_callable=AsyncMock,
+                return_value=2,
+            ),
+            patch.object(
+                photo_service.operations,
+                "delete_photos_in_range_streaming",
+                side_effect=mock_streaming,
+            ),
+        ):
+            await photo_service.delete_photos(
+                date(2020, 1, 1),
+                date(2020, 1, 31),
+                dry_run=False,
+                confirmed=True,
+            )
+
+        sessions = await state_service.list_sessions()
+        assert len(sessions) == 1
+        state = await state_service.load(sessions[0])
+        assert state is not None
+        assert state.status == DeletionStatus.COMPLETED
+        assert state.deleted_count == 1
+        assert state.failed_photo_ids == ["photo_failed"]
+        assert state.failed_count == 1
