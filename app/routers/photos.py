@@ -240,6 +240,26 @@ async def _run_resume_task(
         await _release_session_slot(session_id)
 
 
+async def _restore_interrupted_resume_state(
+    session_id: str,
+    state: DeletionState,
+    state_service: StateService,
+) -> None:
+    """Best-effort rollback when resume setup fails after persisting progress."""
+    if state.status != DeletionStatus.IN_PROGRESS:
+        return
+
+    state.mark_interrupted()
+    try:
+        await state_service.save(state)
+    except BaseException as e:  # noqa: BLE001
+        logger.warning(
+            "Failed to restore interrupted state for resume setup failure %s: %s",
+            session_id,
+            e,
+        )
+
+
 @router.post("/dry-run", response_model=DryRunResult)
 async def dry_run(request: DateRangeRequest) -> DryRunResult:
     """Perform a dry run to count photos that would be deleted.
@@ -279,24 +299,32 @@ async def delete_photos(request: DeleteRequest) -> SessionStartResponse:
         total_count=request.expected_total or 0,
     )
     await _claim_session_slot(state.session_id)
-    state.mark_in_progress()
-    await StateService().save(state)
+    setup_complete = False
+    try:
+        state.mark_in_progress()
+        await StateService().save(state)
 
-    cancel_event = asyncio.Event()
-    _cancellation_events[state.session_id] = cancel_event
+        cancel_event = asyncio.Event()
+        _cancellation_events[state.session_id] = cancel_event
 
-    task = asyncio.create_task(
-        _run_deletion_task(
+        coro = _run_deletion_task(
             session_id=state.session_id,
             start_date=request.start_date,
             end_date=request.end_date,
             expected_total=request.expected_total,
             state=state,
             cancel_event=cancel_event,
-        ),
-        name=f"delete-{state.session_id}",
-    )
-    _active_tasks[state.session_id] = task
+        )
+        try:
+            task = asyncio.create_task(coro, name=f"delete-{state.session_id}")
+        except BaseException:
+            coro.close()
+            raise
+        _active_tasks[state.session_id] = task
+        setup_complete = True
+    finally:
+        if not setup_complete:
+            await _release_session_slot(state.session_id)
 
     return SessionStartResponse(session_id=state.session_id, status=state.status)
 
@@ -368,23 +396,31 @@ async def resume_session(session_id: str) -> SessionStartResponse:
         )
 
     await _claim_session_slot(session_id)
+    setup_complete = False
+    try:
+        # Persist the in_progress transition BEFORE scheduling the background
+        # task. The polling client treats ``interrupted`` as terminal, so if
+        # the first poll lands before the background coroutine flips the
+        # status it would stop the UI flow even though resume is actually
+        # running. Same pattern as the delete endpoint.
+        state.mark_in_progress()
+        await state_service.save(state)
 
-    # Persist the in_progress transition BEFORE scheduling the background
-    # task. The polling client treats ``interrupted`` as terminal, so if
-    # the first poll lands before the background coroutine flips the
-    # status it would stop the UI flow even though resume is actually
-    # running. Same pattern as the delete endpoint.
-    state.mark_in_progress()
-    await state_service.save(state)
+        cancel_event = asyncio.Event()
+        _cancellation_events[session_id] = cancel_event
 
-    cancel_event = asyncio.Event()
-    _cancellation_events[session_id] = cancel_event
-
-    task = asyncio.create_task(
-        _run_resume_task(session_id=session_id, cancel_event=cancel_event),
-        name=f"resume-{session_id}",
-    )
-    _active_tasks[session_id] = task
+        coro = _run_resume_task(session_id=session_id, cancel_event=cancel_event)
+        try:
+            task = asyncio.create_task(coro, name=f"resume-{session_id}")
+        except BaseException:
+            coro.close()
+            raise
+        _active_tasks[session_id] = task
+        setup_complete = True
+    finally:
+        if not setup_complete:
+            await _restore_interrupted_resume_state(session_id, state, state_service)
+            await _release_session_slot(session_id)
 
     return SessionStartResponse(session_id=session_id, status=state.status)
 

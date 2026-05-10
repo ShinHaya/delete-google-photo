@@ -1,12 +1,15 @@
 """Integration tests for API endpoints."""
 
-from collections.abc import Generator
+import asyncio
+from collections.abc import Coroutine, Generator
 from datetime import date
-from unittest.mock import MagicMock, patch
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
 
+from app.exceptions import StateError
 from app.models.state import DeletionState, DeletionStatus
 from app.routers import photos as photos_router
 from app.services.state_service import StateService
@@ -209,7 +212,9 @@ class TestSessionEndpoints:
         )
         await StateService().save(state)
 
-        def fake_create_task(coro: object, *, name: str | None = None) -> MagicMock:
+        def fake_create_task(
+            coro: Coroutine[Any, Any, None], *, name: str | None = None
+        ) -> MagicMock:
             del name
             coro.close()
             return MagicMock(name="resume-task")
@@ -228,3 +233,229 @@ class TestSessionEndpoints:
         persisted = await StateService().load("resume-me")
         assert persisted is not None
         assert persisted.status == DeletionStatus.IN_PROGRESS
+
+    @pytest.mark.asyncio
+    async def test_delete_releases_session_slot_when_state_save_fails(
+        self,
+        client: AsyncClient,
+        mock_settings: object,  # noqa: ARG002
+        reset_active_session: None,  # noqa: ARG002
+    ) -> None:
+        with (
+            patch.object(
+                StateService,
+                "save",
+                new=AsyncMock(side_effect=StateError("save failed")),
+            ),
+            pytest.raises(StateError, match="save failed"),
+        ):
+            await client.post(
+                "/api/photos/delete",
+                json={
+                    "start_date": "2020-01-01",
+                    "end_date": "2020-01-31",
+                    "confirmed": True,
+                },
+            )
+
+        assert photos_router._active_session_id is None
+        assert photos_router._active_tasks == {}
+        assert photos_router._cancellation_events == {}
+
+        def fake_create_task(
+            coro: Coroutine[Any, Any, None], *, name: str | None = None
+        ) -> MagicMock:
+            del name
+            coro.close()
+            return MagicMock(name="delete-task")
+
+        with patch.object(
+            photos_router.asyncio,
+            "create_task",
+            side_effect=fake_create_task,
+        ):
+            response = await client.post(
+                "/api/photos/delete",
+                json={
+                    "start_date": "2020-01-01",
+                    "end_date": "2020-01-31",
+                    "confirmed": True,
+                },
+            )
+
+        assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_delete_releases_session_slot_when_task_creation_fails(
+        self,
+        client: AsyncClient,
+        mock_settings: object,  # noqa: ARG002
+        reset_active_session: None,  # noqa: ARG002
+    ) -> None:
+        with (
+            patch.object(
+                photos_router.asyncio,
+                "create_task",
+                side_effect=RuntimeError("task setup failed"),
+            ),
+            pytest.raises(RuntimeError, match="task setup failed"),
+        ):
+            await client.post(
+                "/api/photos/delete",
+                json={
+                    "start_date": "2020-01-01",
+                    "end_date": "2020-01-31",
+                    "confirmed": True,
+                },
+            )
+
+        assert photos_router._active_session_id is None
+        assert photos_router._active_tasks == {}
+        assert photos_router._cancellation_events == {}
+
+    @pytest.mark.asyncio
+    async def test_delete_releases_session_slot_when_setup_is_cancelled(
+        self,
+        client: AsyncClient,
+        mock_settings: object,  # noqa: ARG002
+        reset_active_session: None,  # noqa: ARG002
+    ) -> None:
+        with (
+            patch.object(
+                StateService,
+                "save",
+                new=AsyncMock(side_effect=asyncio.CancelledError),
+            ),
+            pytest.raises(asyncio.CancelledError),
+        ):
+            await client.post(
+                "/api/photos/delete",
+                json={
+                    "start_date": "2020-01-01",
+                    "end_date": "2020-01-31",
+                    "confirmed": True,
+                },
+            )
+
+        assert photos_router._active_session_id is None
+        assert photos_router._active_tasks == {}
+        assert photos_router._cancellation_events == {}
+
+    @pytest.mark.asyncio
+    async def test_resume_releases_session_slot_when_state_save_fails(
+        self,
+        client: AsyncClient,
+        mock_settings: object,  # noqa: ARG002
+        reset_active_session: None,  # noqa: ARG002
+    ) -> None:
+        state = DeletionState(
+            session_id="resume-save-fails",
+            start_date=date(2020, 1, 1),
+            end_date=date(2020, 1, 31),
+            total_count=10,
+            status=DeletionStatus.INTERRUPTED,
+        )
+        await StateService().save(state)
+
+        with (
+            patch.object(
+                StateService,
+                "save",
+                new=AsyncMock(side_effect=StateError("save failed")),
+            ),
+            pytest.raises(StateError, match="save failed"),
+        ):
+            await client.post(
+                "/api/photos/sessions/resume-save-fails/resume",
+            )
+
+        assert photos_router._active_session_id is None
+        assert photos_router._active_tasks == {}
+        assert photos_router._cancellation_events == {}
+
+    @pytest.mark.asyncio
+    async def test_resume_releases_session_slot_when_setup_is_cancelled(
+        self,
+        client: AsyncClient,
+        mock_settings: object,  # noqa: ARG002
+        reset_active_session: None,  # noqa: ARG002
+    ) -> None:
+        state = DeletionState(
+            session_id="resume-cancelled",
+            start_date=date(2020, 1, 1),
+            end_date=date(2020, 1, 31),
+            total_count=10,
+            status=DeletionStatus.INTERRUPTED,
+        )
+        await StateService().save(state)
+
+        with (
+            patch.object(
+                StateService,
+                "save",
+                new=AsyncMock(side_effect=asyncio.CancelledError),
+            ),
+            pytest.raises(asyncio.CancelledError),
+        ):
+            await client.post("/api/photos/sessions/resume-cancelled/resume")
+
+        assert photos_router._active_session_id is None
+        assert photos_router._active_tasks == {}
+        assert photos_router._cancellation_events == {}
+
+        persisted = await StateService().load("resume-cancelled")
+        assert persisted is not None
+        assert persisted.status == DeletionStatus.INTERRUPTED
+
+        def fake_create_task(
+            coro: Coroutine[Any, Any, None], *, name: str | None = None
+        ) -> MagicMock:
+            del name
+            coro.close()
+            return MagicMock(name="resume-task")
+
+        with patch.object(
+            photos_router.asyncio,
+            "create_task",
+            side_effect=fake_create_task,
+        ):
+            # The cancelled save was mocked, so the on-disk state is still resumable.
+            response = await client.post(
+                "/api/photos/sessions/resume-cancelled/resume",
+            )
+
+        assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_resume_releases_session_slot_when_task_creation_fails(
+        self,
+        client: AsyncClient,
+        mock_settings: object,  # noqa: ARG002
+        reset_active_session: None,  # noqa: ARG002
+    ) -> None:
+        state = DeletionState(
+            session_id="resume-task-fails",
+            start_date=date(2020, 1, 1),
+            end_date=date(2020, 1, 31),
+            total_count=10,
+            status=DeletionStatus.INTERRUPTED,
+        )
+        await StateService().save(state)
+
+        with (
+            patch.object(
+                photos_router.asyncio,
+                "create_task",
+                side_effect=RuntimeError("task setup failed"),
+            ),
+            pytest.raises(RuntimeError, match="task setup failed"),
+        ):
+            await client.post("/api/photos/sessions/resume-task-fails/resume")
+
+        assert photos_router._active_session_id is None
+        assert photos_router._active_tasks == {}
+        assert photos_router._cancellation_events == {}
+
+        persisted = await StateService().load("resume-task-fails")
+        assert persisted is not None
+        assert persisted.status == DeletionStatus.INTERRUPTED
