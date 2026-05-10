@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# post-commit hook for local AI review.
+#
+# Triggers a background reviewer CLI on the just-created commit.
+# Skips on:
+#   - LOCAL_AI_REVIEW_RUNNING=1 (recursion guard)
+#   - branch not matching codex/* or claude/* prefix
+#   - merge / rebase / cherry-pick in progress
+#   - commit message contains [skip-review]
+#
+# This hook is non-blocking: it returns immediately and the reviewer
+# runs detached. Reviewer failures are logged to
+# state/ai-reviews/last-error.log; commit success is unaffected.
+#
+# Note: although the plan was named after "pre-commit", we use
+# post-commit so we can read the just-created commit's message via
+# `git log -1` (pre-commit has no reliable access to the message).
+# The non-blocking + background-launch behavior is unchanged.
+
+set -uo pipefail
+
+GITHOOKS_DIR=$(cd "$(dirname "$0")" && pwd)
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+
+# shellcheck source=/dev/null
+. "$GITHOOKS_DIR/config"
+
+# Recursion guard
+if [ "${LOCAL_AI_REVIEW_RUNNING:-}" = "1" ]; then
+  exit 0
+fi
+
+# Skip merge commits and rebase / cherry-pick in progress.
+#
+# By the time post-commit fires, MERGE_HEAD has already been removed,
+# so we detect a merge commit by parent count on the just-created HEAD
+# instead. rebase-merge / rebase-apply / CHERRY_PICK_HEAD persist for
+# the duration of those operations, so file-based checks still work.
+NUM_PARENTS=$(git show -s --format=%P HEAD 2>/dev/null | wc -w | tr -d ' ')
+if [ "${NUM_PARENTS:-1}" -gt 1 ]; then
+  exit 0
+fi
+GIT_DIR=$(git rev-parse --git-dir)
+if [ -d "$GIT_DIR/rebase-merge" ] \
+   || [ -d "$GIT_DIR/rebase-apply" ] \
+   || [ -f "$GIT_DIR/CHERRY_PICK_HEAD" ]; then
+  exit 0
+fi
+
+# Skip if commit message contains [skip-review]
+HEAD_MSG=$(git log -1 --format='%B' 2>/dev/null || echo "")
+case "$HEAD_MSG" in
+  *'[skip-review]'*) exit 0 ;;
+esac
+
+# Detect reviewer from branch prefix
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+case "$BRANCH" in
+  ${LOCAL_AI_REVIEW_AUTHOR_PREFIX_CLAUDE}*) REVIEWER="codex" ;;
+  ${LOCAL_AI_REVIEW_AUTHOR_PREFIX_CODEX}*)  REVIEWER="claude" ;;
+  *) exit 0 ;;
+esac
+
+# Pin the commit that triggered this hook so the background review
+# always covers the same diff, even if HEAD moves before the
+# orchestrator gets to it.
+HEAD_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
+if [ -z "$HEAD_SHA" ]; then
+  exit 0
+fi
+
+# Prepare state dir for background-launch logs
+STATE_DIR="$REPO_ROOT/$LOCAL_AI_REVIEW_STATE_DIR"
+mkdir -p "$STATE_DIR"
+chmod 0700 "$STATE_DIR" 2>/dev/null || true
+LAUNCH_LOG="$STATE_DIR/last-run.log"
+LAUNCH_ERR="$STATE_DIR/last-error.log"
+
+# Background-launch the reviewer. setsid would be cleaner but is
+# not available on macOS by default; nohup + & + redirected stdio
+# is enough to detach from the shell that ran git commit.
+nohup env LOCAL_AI_REVIEW_RUNNING=1 \
+  "$GITHOOKS_DIR/lib/local-ai-review.sh" "$REVIEWER" "$BRANCH" "$HEAD_SHA" \
+  >> "$LAUNCH_LOG" 2>> "$LAUNCH_ERR" </dev/null &
+disown 2>/dev/null || true
+
+printf '[local-ai-review] queued %s review for %s (commit=%s)\n' \
+  "$REVIEWER" "$BRANCH" "$(git rev-parse --short "$HEAD_SHA" 2>/dev/null || echo unknown)" >&2
+
+exit 0

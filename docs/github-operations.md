@@ -152,6 +152,17 @@ PR に最低限含める内容:
 - Claude Code が開発者のときは Codex をレビュアーにする
 - レビューコメントが付いたら、開発者はその対応を行う
 
+ローカル AI 相互レビュー（Git Hooks 経由）:
+
+- `bash scripts/setup-hooks.sh` で `core.hooksPath = .githooks` を設定すると、
+  `codex/*` / `claude/*` ブランチでの commit ごとに相手側 AI が
+  `state/ai-reviews/` にレビューを書き出す
+- このレビューは commit を block しないバックグラウンド実行で、PR を作る前の
+  早い段階で fast feedback を受けるための仕組みである
+- PR レビュー（GitHub Actions 版）の置き換えではなく、「commit ごとの一次レビュー」
+  という追加レイヤーとして併用する
+- skip 条件・設計詳細は `docs/local-ai-review-plan.md`
+
 GitHub Actions 自動化:
 
 - Claude Code review は `.github/workflows/claude-code-review.yml` で行う
