@@ -159,18 +159,22 @@ PR に最低限含める内容:
   `state/ai-reviews/` にレビューを書き出す
 - このレビューは commit を block しないバックグラウンド実行で、PR を作る前の
   早い段階で fast feedback を受けるための仕組みである
-- PR レビュー（GitHub Actions 版）の置き換えではなく、「commit ごとの一次レビュー」
-  という追加レイヤーとして併用する
+- GitHub Actions 版の cross-AI review は自動起動せず、必要なときだけ
+  `workflow_dispatch` で手動実行する fallback として残す
 - skip 条件・設計詳細は `docs/local-ai-review-plan.md`
 
 GitHub Actions 自動化:
 
-- Claude Code review は `.github/workflows/claude-code-review.yml` で行う
-- Codex review は `.github/workflows/codex-code-review.yml` で行う
+- GitHub Actions 版の cross-AI review は、ローカル AI 相互レビューの
+  fallback として残す
+- `.github/workflows/claude-code-review.yml` と
+  `.github/workflows/codex-code-review.yml` は `workflow_dispatch` のみで起動する
+- PR の opened / synchronize / ready_for_review / reopened では自動起動しない
+- 手動実行時は `pr_number` input にレビュー対象 PR 番号を渡す
 - 開発者判定は PR author login ではなく **head branch 名の接頭辞** を使う
-- `codex/` で始まるブランチの PR では Claude Code review を走らせる
-- `claude/` で始まるブランチの PR では Codex review を走らせる
-- 接頭辞に一致しないブランチでは、どちらの review workflow も走らせない
+- `codex/` で始まるブランチの PR を手動指定した場合は Claude Code review を走らせる
+- `claude/` で始まるブランチの PR を手動指定した場合は Codex review を走らせる
+- 接頭辞に一致しないブランチを指定した場合は、どちらの review workflow も走らせない
 
 レビュー結果からの自動修正（cross-AI auto-fix）:
 
@@ -207,9 +211,12 @@ GitHub Actions 自動化:
 mention trigger の確認手順:
 
 1. `codex/*` または `claude/*` 接頭辞の head branch を持つテスト用 PR を作る
-2. 対応する review workflow がレビューコメント末尾に `@codex` または `@claude` を投稿することを確認する
-3. `gh run list --workflow codex.yml` または `gh run list --workflow claude.yml` で、対象 mention を受けた workflow run が作成されていることを確認する
-4. run が failed の場合は `gh run view <run-id> --log-failed` で、event 条件不一致・branch guard・bot / permission check のどこで止まったかを確認する
+2. 対応する review workflow を手動実行する
+   - `gh workflow run claude-code-review.yml -f pr_number=<PR番号>`
+   - `gh workflow run codex-code-review.yml -f pr_number=<PR番号>`
+3. review workflow がレビューコメント末尾に `@codex` または `@claude` を投稿することを確認する
+4. `gh run list --workflow codex.yml` または `gh run list --workflow claude.yml` で、対象 mention を受けた workflow run が作成されていることを確認する
+5. run が failed の場合は `gh run view <run-id> --log-failed` で、event 条件不一致・branch guard・bot / permission check のどこで止まったかを確認する
 
 必要な secret:
 
@@ -239,7 +246,8 @@ AI_REVIEW_TRIGGER_PAT=ghp_... もしくは github_pat_...
 2. `Settings` > `Secrets and variables` > `Actions` を開く
 3. `Secrets` タブで上記の Actions secrets を追加する
 4. `codex/` または `claude/` 接頭辞のブランチからテスト用 PR を作成する
-5. 想定した AI review workflow が動くことを確認する
+5. `gh workflow run <workflow-file> -f pr_number=<PR番号>` で、想定した
+   AI review workflow が手動実行できることを確認する
 6. PAT 設定後の確認方法として、`claude/` 接頭辞のブランチで PR を作り
    Codex review 実行後に post された `@claude` コメントから
    `claude.yml` が起動することを `gh run list --workflow=claude.yml`
