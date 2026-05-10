@@ -31,6 +31,19 @@ uv sync --all-extras
 uv run playwright install chromium
 ```
 
+### 1.5 ローカル AI レビュー Hooks の有効化（任意）
+
+`codex/*` / `claude/*` ブランチでの commit 時に、相手側 AI による
+ローカルレビューを自動で走らせる Git hook を入れる場合は、初回のみ
+次を実行する。
+
+```bash
+bash scripts/setup-hooks.sh
+```
+
+詳細は [docs/local-ai-review-plan.md](docs/local-ai-review-plan.md) を参照。
+このセットアップを行わなくてもツール本体の動作には影響しない。
+
 ### 2. 開発サーバーの起動
 
 ```bash

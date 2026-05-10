@@ -183,6 +183,31 @@ Claude Codeのコード修正後に自動でリンターやテストを実行す
 }
 ```
 
+### 3.4 ローカル AI 相互レビュー（Git Hooks）
+
+Claude Code Hooks とは別に、Git の `post-commit` を使って `codex/*` /
+`claude/*` ブランチの commit を相手側 AI（Claude / Codex CLI）に
+バックグラウンドでレビューさせる仕組みがある。
+
+セットアップ:
+
+```bash
+bash scripts/setup-hooks.sh
+```
+
+これで `git config core.hooksPath .githooks` が設定され、`.githooks/post-commit`
+が起動するようになる。レビューは commit を block しない。レビュー結果は
+`state/ai-reviews/<timestamp>-<reviewer>.md` に保存される。
+
+スキップ条件:
+
+- branch が `codex/*` / `claude/*` に一致しない
+- commit message に `[skip-review]` が含まれる
+- merge / rebase / cherry-pick 中
+- 同じ branch / merge-base / diff hash で既にレビュー済み
+
+設計の詳細は `docs/local-ai-review-plan.md`。
+
 ## 4. コーディング規約
 
 ### 4.1 スタイルガイド

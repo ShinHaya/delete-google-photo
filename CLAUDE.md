@@ -97,6 +97,20 @@ uv run pytest tests/test_specific.py::test_function_name -v
 ### Hooks設定ファイル
 - `.claude/settings.local.json` - ローカルHooks設定
 
+## ローカル AI 相互レビュー（Git Hooks 経由）
+
+`bash scripts/setup-hooks.sh` を一度実行しておくと、`claude/*` ブランチで
+commit したとき、`.githooks/post-commit` がバックグラウンドで Codex CLI を
+起動して直前の commit を含む branch diff（`merge-base origin/main` 〜 HEAD）を
+レビューする。reviewer はバックグラウンド実行で commit を block しない。
+
+- 結果は `state/ai-reviews/<timestamp>-codex.md` に保存される
+- 同じ branch / merge-base / diff hash のときは再レビューしない（idempotent）
+- commit message に `[skip-review]` を含めると skip
+- `codex` CLI が PATH に無い場合は `state/ai-reviews/last-error.log` に
+  失敗が記録されるが、commit 自体は成功する
+- 設計の詳細は `docs/local-ai-review-plan.md`
+
 ## ディレクトリ構成
 
 ```
