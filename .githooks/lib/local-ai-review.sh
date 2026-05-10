@@ -47,16 +47,61 @@ log()  { printf '[%s] %s\n' "$(date -u +%FT%TZ)" "$*" >> "$LOG"; }
 warn() { printf '[%s] WARN: %s\n' "$(date -u +%FT%TZ)" "$*" >> "$LOG"; }
 fail() { printf '[%s] ERROR: %s\n' "$(date -u +%FT%TZ)" "$*" >> "$ERR"; }
 
+PHASE="init"
+set_phase() {
+  PHASE=$1
+  log "phase=$PHASE"
+}
+
+cleanup_temp_for_pid() {
+  local pid=$1 reason=$2 f
+  for f in \
+    "$STATE_DIR/.diff.$pid" \
+    "$STATE_DIR/.payload.$pid" \
+    "$STATE_DIR/.review-out.$pid" \
+    "$STATE_DIR/.review-err.$pid"; do
+    if [ -e "$f" ]; then
+      rm -f "$f"
+      warn "removed stale temp file=$f pid=$pid reason=$reason"
+    fi
+  done
+}
+
+cleanup_orphan_temp_files() {
+  local f pid
+  shopt -s nullglob
+  for f in \
+    "$STATE_DIR"/.diff.* \
+    "$STATE_DIR"/.payload.* \
+    "$STATE_DIR"/.review-out.* \
+    "$STATE_DIR"/.review-err.*; do
+    pid=${f##*.}
+    case "$pid" in
+      *[!0-9]*|'') continue ;;
+    esac
+    if ! kill -0 "$pid" 2>/dev/null; then
+      rm -f "$f"
+      warn "removed orphan temp file=$f pid=$pid"
+    fi
+  done
+  shopt -u nullglob
+}
+
 # --- Lock acquisition ------------------------------------------
 LOCK_FILE="$STATE_DIR/.lock"
 NOW_EPOCH=$(date +%s)
 LOCK_TOKEN="$$:$NOW_EPOCH"
 
+cleanup_orphan_temp_files
+
 if [ -f "$LOCK_FILE" ]; then
   LOCK_PID=""
   LOCK_TS=""
   IFS=':' read -r LOCK_PID LOCK_TS < "$LOCK_FILE" || true
-  if [ -n "$LOCK_PID" ] && kill -0 "$LOCK_PID" 2>/dev/null; then
+  if [ -z "$LOCK_PID" ] || [ -z "$LOCK_TS" ]; then
+    warn "malformed stale lock, removing contents=$(cat "$LOCK_FILE" 2>/dev/null || true)"
+    rm -f "$LOCK_FILE"
+  elif kill -0 "$LOCK_PID" 2>/dev/null; then
     AGE=$((NOW_EPOCH - ${LOCK_TS:-0}))
     if [ "$AGE" -lt "$LOCAL_AI_REVIEW_LOCK_TIMEOUT_SEC" ]; then
       log "skip: another review is in progress (pid=$LOCK_PID, age=${AGE}s)"
@@ -64,10 +109,17 @@ if [ -f "$LOCK_FILE" ]; then
     fi
     warn "stale lock pid=$LOCK_PID age=${AGE}s, taking over"
     kill -TERM "$LOCK_PID" 2>/dev/null || true
+    cleanup_temp_for_pid "$LOCK_PID" "stale-lock-takeover"
+  else
+    AGE=$((NOW_EPOCH - ${LOCK_TS:-0}))
+    warn "dead stale lock pid=$LOCK_PID age=${AGE}s, removing"
+    cleanup_temp_for_pid "$LOCK_PID" "dead-stale-lock"
+    rm -f "$LOCK_FILE"
   fi
 fi
 
 printf '%s\n' "$LOCK_TOKEN" > "$LOCK_FILE"
+set_phase "lock-acquired pid=$$"
 
 # Cleanup removes auxiliary files unconditionally, but the lock file
 # only when its contents still match our token — so a successor
@@ -75,36 +127,55 @@ printf '%s\n' "$LOCK_TOKEN" > "$LOCK_FILE"
 # by our exit trap.
 cleanup_files=()
 cleanup() {
+  local status=$?
   local f stored
   for f in "${cleanup_files[@]}"; do
-    [ -e "$f" ] && rm -f "$f"
+    if [ -e "$f" ]; then
+      rm -f "$f"
+      warn "cleanup removed temp file=$f phase=$PHASE status=$status"
+    fi
   done
   if [ -f "$LOCK_FILE" ]; then
     stored=$(cat "$LOCK_FILE" 2>/dev/null || true)
     if [ "$stored" = "$LOCK_TOKEN" ]; then
       rm -f "$LOCK_FILE"
+      log "cleanup removed lock phase=$PHASE status=$status"
     fi
   fi
+  if [ "$status" -ne 0 ]; then
+    fail "exit status=$status phase=$PHASE reviewer=$REVIEWER branch=$BRANCH commit=$COMMIT_SHA"
+  fi
+}
+signal_exit() {
+  local signal=$1 status=$2
+  fail "signal=$signal phase=$PHASE reviewer=$REVIEWER branch=$BRANCH commit=$COMMIT_SHA"
+  exit "$status"
 }
 trap cleanup EXIT
+trap 'signal_exit HUP 129' HUP
+trap 'signal_exit INT 130' INT
+trap 'signal_exit TERM 143' TERM
 
 log "start reviewer=$REVIEWER branch=$BRANCH commit=$COMMIT_SHA"
 
 # Resolve the pinned commit once. If it has gone away (e.g. because
 # of a hard reset between commit and background launch) we cannot
 # meaningfully review.
+set_phase "resolve-commit"
 if ! COMMIT_SHA=$(git rev-parse --verify "${COMMIT_SHA}^{commit}" 2>/dev/null); then
   warn "commit $COMMIT_SHA not resolvable; skipping"
   exit 0
 fi
 
 # --- Compute merge-base ----------------------------------------
+set_phase "merge-base"
 if ! MERGE_BASE=$(git merge-base "$LOCAL_AI_REVIEW_BASE_REF" "$COMMIT_SHA" 2>/dev/null); then
   warn "no merge-base with $LOCAL_AI_REVIEW_BASE_REF; skipping"
   exit 0
 fi
 
 # --- Compute diff against allowed paths ------------------------
+set_phase "diff"
 DIFF_FILE="$STATE_DIR/.diff.$$"
 cleanup_files+=("$DIFF_FILE")
 
@@ -117,9 +188,11 @@ if [ "$DIFF_SIZE" = "0" ]; then
 fi
 
 # --- Compute diff hash ------------------------------------------
+set_phase "diff-hash"
 DIFF_SHA=$(shasum -a 256 < "$DIFF_FILE" | awk '{print $1}')
 
 # --- Idempotency check ------------------------------------------
+set_phase "idempotency"
 if last_reviewed_matches "$BRANCH" "$MERGE_BASE" "$DIFF_SHA"; then
   log "skip: same as last-reviewed (sha=$(printf '%s' "$DIFF_SHA" | cut -c1-12))"
   exit 0
@@ -142,6 +215,7 @@ if [ ! -f "$PROMPT_FILE" ]; then
   exit 1
 fi
 
+set_phase "payload"
 CHANGED_FILES=$(git diff --name-only "$MERGE_BASE" "$COMMIT_SHA" -- "${LOCAL_AI_REVIEW_TARGET_PATHS[@]}")
 
 PAYLOAD_FILE="$STATE_DIR/.payload.$$"
@@ -161,6 +235,7 @@ cleanup_files+=("$PAYLOAD_FILE")
 } > "$PAYLOAD_FILE"
 
 # --- Run reviewer with watchdog timeout (bash 3.2-safe) ---------
+set_phase "reviewer-start"
 TS=$(date +%Y%m%d-%H%M%S)
 OUTPUT="$STATE_DIR/${TS}-${REVIEWER}.md"
 REVIEWER_OUT="$STATE_DIR/.review-out.$$"
@@ -179,26 +254,32 @@ run_reviewer() {
 
 (run_reviewer > "$REVIEWER_OUT" 2> "$REVIEWER_ERR") &
 REVIEWER_PID=$!
+log "reviewer spawned pid=$REVIEWER_PID timeout=${LOCAL_AI_REVIEW_REVIEWER_TIMEOUT_SEC}s"
 
 (
   sleep "$LOCAL_AI_REVIEW_REVIEWER_TIMEOUT_SEC"
   if kill -0 "$REVIEWER_PID" 2>/dev/null; then
+    warn "reviewer timeout pid=$REVIEWER_PID; sending TERM"
     kill -TERM "$REVIEWER_PID" 2>/dev/null
     sleep 5
+    warn "reviewer timeout pid=$REVIEWER_PID; sending KILL if still alive"
     kill -KILL "$REVIEWER_PID" 2>/dev/null
   fi
 ) &
 WATCHDOG_PID=$!
+log "watchdog spawned pid=$WATCHDOG_PID"
 
 set +e
 wait "$REVIEWER_PID"
 REVIEWER_STATUS=$?
 set -e
+log "reviewer exited pid=$REVIEWER_PID status=$REVIEWER_STATUS"
 
 kill "$WATCHDOG_PID" 2>/dev/null || true
 wait "$WATCHDOG_PID" 2>/dev/null || true
 
 # --- Save output ------------------------------------------------
+set_phase "save-output"
 {
   printf '# Local AI review (%s)\n\n' "$REVIEWER"
   printf -- '- timestamp: %s\n' "$(date -u +%FT%TZ)"
@@ -225,5 +306,7 @@ if [ "$REVIEWER_STATUS" -ne 0 ]; then
   exit 0
 fi
 
+set_phase "save-last-reviewed"
 last_reviewed_save "$BRANCH" "$MERGE_BASE" "$DIFF_SHA" "$REVIEWER"
+set_phase "done"
 log "done reviewer=$REVIEWER output=$OUTPUT"

@@ -76,15 +76,102 @@ chmod 0700 "$STATE_DIR" 2>/dev/null || true
 LAUNCH_LOG="$STATE_DIR/last-run.log"
 LAUNCH_ERR="$STATE_DIR/last-error.log"
 
-# Background-launch the reviewer. setsid would be cleaner but is
-# not available on macOS by default; nohup + & + redirected stdio
-# is enough to detach from the shell that ran git commit.
-nohup env LOCAL_AI_REVIEW_RUNNING=1 \
-  "$GITHOOKS_DIR/lib/local-ai-review.sh" "$REVIEWER" "$BRANCH" "$HEAD_SHA" \
-  >> "$LAUNCH_LOG" 2>> "$LAUNCH_ERR" </dev/null &
-disown 2>/dev/null || true
+log_launch() {
+  printf '[%s] %s\n' "$(date -u +%FT%TZ)" "$*" >> "$LAUNCH_LOG"
+}
+
+LAUNCHER="$GITHOOKS_DIR/lib/local-ai-review-launch.sh"
+SHORT_SHA=$(git rev-parse --short "$HEAD_SHA" 2>/dev/null || echo unknown)
+
+fallback_nohup() {
+  [ -n "${LAUNCH_PLIST:-}" ] && rm -f "$LAUNCH_PLIST"
+  LOCAL_AI_REVIEW_LAUNCH_METHOD=nohup \
+    nohup "$LAUNCHER" "$REPO_ROOT" "$GITHOOKS_DIR" "$STATE_DIR" "$REVIEWER" "$BRANCH" "$HEAD_SHA" \
+    >/dev/null 2>> "$LAUNCH_ERR" </dev/null &
+  LAUNCH_PID=$!
+  disown "$LAUNCH_PID" 2>/dev/null || true
+  log_launch "queued reviewer=$REVIEWER branch=$BRANCH commit=$HEAD_SHA method=nohup pid=$LAUNCH_PID"
+}
+
+xml_escape() {
+  printf '%s' "$1" \
+    | sed -e 's/&/\&amp;/g' \
+          -e 's/</\&lt;/g' \
+          -e 's/>/\&gt;/g' \
+          -e 's/"/\&quot;/g' \
+          -e "s/'/\&apos;/g"
+}
+
+plist_string() {
+  printf '    <string>%s</string>\n' "$(xml_escape "$1")"
+}
+
+# On macOS, Codex non-interactive command sessions can terminate
+# child process groups started with plain `nohup ... &` before the
+# review completes. Bootstrap a one-shot LaunchAgent in the per-user
+# launchd when available, then keep nohup as a portable fallback.
+if [ "$(uname -s 2>/dev/null || echo unknown)" = "Darwin" ] \
+   && command -v launchctl >/dev/null 2>&1; then
+  SAFE_BRANCH=$(printf '%s' "$BRANCH" | tr -c 'A-Za-z0-9_.-' '-')
+  LABEL="local-ai-review.$SAFE_BRANCH.$SHORT_SHA.$$"
+  LAUNCH_DOMAIN="gui/$(id -u)"
+  LAUNCH_SERVICE="$LAUNCH_DOMAIN/$LABEL"
+  LAUNCH_PLIST="$STATE_DIR/.launch.$SHORT_SHA.$$.plist"
+  {
+    printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>'
+    printf '%s\n' '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+    printf '%s\n' '<plist version="1.0">'
+    printf '%s\n' '<dict>'
+    printf '  <key>Label</key>\n'
+    plist_string "$LABEL"
+    printf '  <key>ProgramArguments</key>\n'
+    printf '  <array>\n'
+    plist_string "$LAUNCHER"
+    plist_string "$REPO_ROOT"
+    plist_string "$GITHOOKS_DIR"
+    plist_string "$STATE_DIR"
+    plist_string "$REVIEWER"
+    plist_string "$BRANCH"
+    plist_string "$HEAD_SHA"
+    plist_string "$LAUNCH_SERVICE"
+    plist_string "$LAUNCH_PLIST"
+    printf '  </array>\n'
+    printf '  <key>EnvironmentVariables</key>\n'
+    printf '  <dict>\n'
+    printf '    <key>LOCAL_AI_REVIEW_LAUNCH_METHOD</key>\n'
+    plist_string "launchctl"
+    printf '    <key>PATH</key>\n'
+    plist_string "${PATH:-/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin}"
+    printf '    <key>HOME</key>\n'
+    plist_string "${HOME:-}"
+    printf '    <key>SHELL</key>\n'
+    plist_string "${SHELL:-/bin/bash}"
+    printf '  </dict>\n'
+    printf '  <key>RunAtLoad</key>\n'
+    printf '  <true/>\n'
+    printf '  <key>KeepAlive</key>\n'
+    printf '  <false/>\n'
+    printf '  <key>ProcessType</key>\n'
+    plist_string "Background"
+    printf '  <key>StandardOutPath</key>\n'
+    plist_string "/dev/null"
+    printf '  <key>StandardErrorPath</key>\n'
+    plist_string "$LAUNCH_ERR"
+    printf '%s\n' '</dict>'
+    printf '%s\n' '</plist>'
+  } > "$LAUNCH_PLIST"
+  if launchctl bootstrap "$LAUNCH_DOMAIN" "$LAUNCH_PLIST" 2>> "$LAUNCH_ERR"; then
+    rm -f "$LAUNCH_PLIST"
+    log_launch "queued reviewer=$REVIEWER branch=$BRANCH commit=$HEAD_SHA method=launchctl label=$LABEL"
+  else
+    log_launch "launchctl bootstrap failed reviewer=$REVIEWER branch=$BRANCH commit=$HEAD_SHA; falling back to nohup"
+    fallback_nohup
+  fi
+else
+  fallback_nohup
+fi
 
 printf '[local-ai-review] queued %s review for %s (commit=%s)\n' \
-  "$REVIEWER" "$BRANCH" "$(git rev-parse --short "$HEAD_SHA" 2>/dev/null || echo unknown)" >&2
+  "$REVIEWER" "$BRANCH" "$SHORT_SHA" >&2
 
 exit 0
