@@ -1,28 +1,41 @@
 name: Claude Code Review
 
 on:
-  pull_request:
-    types: [opened, synchronize, ready_for_review, reopened]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to review
+        required: true
+        type: number
 
 jobs:
   skip-check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       skip: ${{ steps.check.outputs.skip }}
+      draft: ${{ steps.check.outputs.draft }}
+      head_ref: ${{ steps.check.outputs.head_ref }}
+      head_sha: ${{ steps.check.outputs.head_sha }}
     steps:
-      - name: Detect [skip-review] marker on head commit
+      - name: Inspect pull request
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ inputs.pr_number }}
         run: |
           set -euo pipefail
+          PR_JSON=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}")
+          HEAD_SHA=$(printf '%s' "$PR_JSON" | jq -r .head.sha)
+          HEAD_REF=$(printf '%s' "$PR_JSON" | jq -r .head.ref)
+          DRAFT=$(printf '%s' "$PR_JSON" | jq -r .draft)
+
+          echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
+          echo "head_ref=${HEAD_REF}" >> "$GITHUB_OUTPUT"
+          echo "draft=${DRAFT}" >> "$GITHUB_OUTPUT"
+
           MESSAGE=$(gh api "repos/${{ github.repository }}/commits/${HEAD_SHA}" --jq .commit.message)
           if printf '%s' "$MESSAGE" | grep -F "[skip-review]" > /dev/null; then
             echo "Head commit carries [skip-review]; skipping review."
@@ -35,8 +48,8 @@ jobs:
     needs: skip-check
     if: |
       needs.skip-check.outputs.skip != 'true' &&
-      !github.event.pull_request.draft &&
-      startsWith(github.event.pull_request.head.ref, 'codex/')
+      needs.skip-check.outputs.draft != 'true' &&
+      startsWith(needs.skip-check.outputs.head_ref, 'codex/')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -48,6 +61,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          ref: refs/pull/${{ inputs.pr_number }}/merge
           fetch-depth: 1
 
       - name: Run Claude Code Review
@@ -58,7 +72,7 @@ jobs:
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
           prompt: |
-            /code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}
+            /code-review:code-review ${{ github.repository }}/pull/${{ inputs.pr_number }}
 
             After posting the review, append the following line verbatim at the end of the review body so the original developer (Codex) is mentioned and can apply the fixes:
 

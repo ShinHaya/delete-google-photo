@@ -1,26 +1,44 @@
 name: Codex Code Review
 
 on:
-  pull_request:
-    types:
-      - opened
-      - synchronize
-      - ready_for_review
-      - reopened
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to review
+        required: true
+        type: number
 
 jobs:
   skip-check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       skip: ${{ steps.check.outputs.skip }}
+      draft: ${{ steps.check.outputs.draft }}
+      base_ref: ${{ steps.check.outputs.base_ref }}
+      head_ref: ${{ steps.check.outputs.head_ref }}
+      head_sha: ${{ steps.check.outputs.head_sha }}
     steps:
-      - name: Detect [skip-review] marker on head commit
+      - name: Inspect pull request
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ inputs.pr_number }}
         run: |
           set -euo pipefail
+          PR_JSON=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}")
+          BASE_REF=$(printf '%s' "$PR_JSON" | jq -r .base.ref)
+          HEAD_SHA=$(printf '%s' "$PR_JSON" | jq -r .head.sha)
+          HEAD_REF=$(printf '%s' "$PR_JSON" | jq -r .head.ref)
+          DRAFT=$(printf '%s' "$PR_JSON" | jq -r .draft)
+
+          echo "base_ref=${BASE_REF}" >> "$GITHUB_OUTPUT"
+          echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
+          echo "head_ref=${HEAD_REF}" >> "$GITHUB_OUTPUT"
+          echo "draft=${DRAFT}" >> "$GITHUB_OUTPUT"
+
           MESSAGE=$(gh api "repos/${{ github.repository }}/commits/${HEAD_SHA}" --jq .commit.message)
           if printf '%s' "$MESSAGE" | grep -F "[skip-review]" > /dev/null; then
             echo "Head commit carries [skip-review]; skipping review."
@@ -33,8 +51,8 @@ jobs:
     needs: skip-check
     if: |
       needs.skip-check.outputs.skip != 'true' &&
-      !github.event.pull_request.draft &&
-      startsWith(github.event.pull_request.head.ref, 'claude/')
+      needs.skip-check.outputs.draft != 'true' &&
+      startsWith(needs.skip-check.outputs.head_ref, 'claude/')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -44,13 +62,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          ref: refs/pull/${{ inputs.pr_number }}/merge
 
       - name: Pre-fetch base and head refs
         run: |
           git fetch --no-tags origin \
-            ${{ github.event.pull_request.base.ref }} \
-            +refs/pull/${{ github.event.pull_request.number }}/head
+            ${{ needs.skip-check.outputs.base_ref }} \
+            +refs/pull/${{ inputs.pr_number }}/head
 
       - name: Run Codex review
         id: run_codex
@@ -89,7 +107,7 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number,
+              issue_number: Number("${{ inputs.pr_number }}"),
               body,
             });
         env:
