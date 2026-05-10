@@ -191,12 +191,20 @@ git diff "$BASE" -- <対象パス>
 返しても commit に影響しない）。reviewer CLI はバックグラウンドで起動し、
 `post-commit` 本体は即 exit 0 で返す。
 
+macOS では Codex の非対話 command session から `nohup ... &` だけで起動した
+background child が完了前に終了することがあるため、`post-commit` はまず
+one-shot LaunchAgent plist を作り、`launchctl bootstrap gui/<uid>` で
+user launchd に登録する。
+`launchctl` が使えない環境では portable fallback として `nohup` を使う。
+
 想定:
 
 ```bash
-nohup .githooks/lib/local-ai-review.sh "$reviewer" "$branch" \
-  >> state/ai-reviews/last-run.log 2>> state/ai-reviews/last-error.log </dev/null &
-disown 2>/dev/null || true
+launchctl bootstrap "gui/$(id -u)" "state/ai-reviews/.launch.<sha>.$$.plist"
+
+# fallback
+nohup .githooks/lib/local-ai-review-launch.sh "$repo_root" "$githooks_dir" "$state_dir" \
+  "$reviewer" "$branch" "$sha" >/dev/null 2>> state/ai-reviews/last-error.log </dev/null &
 ```
 
 reviewer CLI の失敗は non-blocking とする。
@@ -228,9 +236,12 @@ lock file は PID と起動時刻を含める。
 一定時間を超えた lock は stale と見なして掃除する。timeout は初期値 10 分を
 候補にし、`.githooks/config` で変更可能にする。
 
-macOS 標準コマンドだけで実装するか、`gtimeout` / `flock` など Homebrew
-依存を許容するかは実装時に確定する。テンプレート化を優先するなら、
-PID file + timestamp 方式を第一候補にする。
+macOS 標準コマンドだけで動かすため、`gtimeout` / `flock` など Homebrew
+依存は必須にしない。PID file + timestamp 方式で stale lock を検出し、
+dead PID / malformed lock は `last-run.log` に記録して削除する。
+dead PID に紐づく temp file や orphan temp file も同時に回収する。
+reviewer 起動後は phase marker、reviewer PID、watchdog PID、signal trap、
+cleanup 結果を `state/ai-reviews/last-run.log` / `last-error.log` に残す。
 
 ## State 管理
 
