@@ -60,19 +60,29 @@ LOCAL_AI_REVIEW_DIFF_WARN_BYTES=$((256 * 1024))
 # Each function reads the full prompt (prompt template + diff) from
 # stdin and writes the review body to stdout. Errors should go to
 # stderr. Override these to point at different CLIs / subscriptions.
+#
+# Each function MUST `exec` into the reviewer CLI as its final step.
+# The orchestrator's watchdog tracks the PID of the subshell that
+# runs the function; if the function called the CLI as a child
+# instead of `exec`ing, killing the tracked PID would only kill
+# the wrapper and leave the actual CLI orphaned.
 
 local_ai_review_run_claude() {
+  local prompt
+  prompt=$(cat)
   # plan mode is read-only at the model level. We additionally
   # restrict --tools to read-only operations as defense in depth.
-  claude -p "$(cat)" \
+  exec claude -p "$prompt" \
     --permission-mode plan \
     --output-format text \
     --tools "Read,Grep,Glob"
 }
 
 local_ai_review_run_codex() {
+  local prompt
+  prompt=$(cat)
   # read-only sandbox blocks all file edits.
-  codex exec \
+  exec codex exec \
     --sandbox read-only \
-    "$(cat)"
+    "$prompt"
 }

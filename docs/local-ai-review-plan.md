@@ -375,7 +375,8 @@ GitHub Actions 版のプロンプトには PR やメンションを前提にし�
 
 Claude からのレビュー指摘に対し、次を計画へ反映した。
 
-- `PostToolUse` ではなく Git `pre-commit` を採用する
+- `PostToolUse` ではなく Git の commit hook を採用する（最終的に
+  `[skip-review]` 判定のため `pre-commit` ではなく `post-commit` で実装）
 - Python オーケストレーターではなく bash + `core.hooksPath` を採用する
 - author 判定は branch prefix で行う
 - reviewer CLI は background 起動し、commit を block しない
@@ -385,4 +386,3 @@ Claude からのレビュー指摘に対し、次を計画へ反映した。
 - lock の stale 検出、timeout、atomic write、state 構造を明記する
 - `.githooks/`, `scripts/`, `pyproject.toml`, `uv.lock` をレビュー対象に追加する
 - GitHub Actions 版の退避期間を具体化する
-

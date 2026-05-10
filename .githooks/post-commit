@@ -30,10 +30,18 @@ if [ "${LOCAL_AI_REVIEW_RUNNING:-}" = "1" ]; then
   exit 0
 fi
 
-# Skip during merge / rebase / cherry-pick
+# Skip merge commits and rebase / cherry-pick in progress.
+#
+# By the time post-commit fires, MERGE_HEAD has already been removed,
+# so we detect a merge commit by parent count on the just-created HEAD
+# instead. rebase-merge / rebase-apply / CHERRY_PICK_HEAD persist for
+# the duration of those operations, so file-based checks still work.
+NUM_PARENTS=$(git show -s --format=%P HEAD 2>/dev/null | wc -w | tr -d ' ')
+if [ "${NUM_PARENTS:-1}" -gt 1 ]; then
+  exit 0
+fi
 GIT_DIR=$(git rev-parse --git-dir)
-if [ -f "$GIT_DIR/MERGE_HEAD" ] \
-   || [ -d "$GIT_DIR/rebase-merge" ] \
+if [ -d "$GIT_DIR/rebase-merge" ] \
    || [ -d "$GIT_DIR/rebase-apply" ] \
    || [ -f "$GIT_DIR/CHERRY_PICK_HEAD" ]; then
   exit 0
@@ -53,9 +61,18 @@ case "$BRANCH" in
   *) exit 0 ;;
 esac
 
+# Pin the commit that triggered this hook so the background review
+# always covers the same diff, even if HEAD moves before the
+# orchestrator gets to it.
+HEAD_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
+if [ -z "$HEAD_SHA" ]; then
+  exit 0
+fi
+
 # Prepare state dir for background-launch logs
 STATE_DIR="$REPO_ROOT/$LOCAL_AI_REVIEW_STATE_DIR"
 mkdir -p "$STATE_DIR"
+chmod 0700 "$STATE_DIR" 2>/dev/null || true
 LAUNCH_LOG="$STATE_DIR/last-run.log"
 LAUNCH_ERR="$STATE_DIR/last-error.log"
 
@@ -63,11 +80,11 @@ LAUNCH_ERR="$STATE_DIR/last-error.log"
 # not available on macOS by default; nohup + & + redirected stdio
 # is enough to detach from the shell that ran git commit.
 nohup env LOCAL_AI_REVIEW_RUNNING=1 \
-  "$GITHOOKS_DIR/lib/local-ai-review.sh" "$REVIEWER" "$BRANCH" \
+  "$GITHOOKS_DIR/lib/local-ai-review.sh" "$REVIEWER" "$BRANCH" "$HEAD_SHA" \
   >> "$LAUNCH_LOG" 2>> "$LAUNCH_ERR" </dev/null &
 disown 2>/dev/null || true
 
 printf '[local-ai-review] queued %s review for %s (commit=%s)\n' \
-  "$REVIEWER" "$BRANCH" "$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" >&2
+  "$REVIEWER" "$BRANCH" "$(git rev-parse --short "$HEAD_SHA" 2>/dev/null || echo unknown)" >&2
 
 exit 0

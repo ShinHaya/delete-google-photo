@@ -14,6 +14,11 @@
 
 set -uo pipefail
 
+# All review artifacts can contain branch diffs and reviewer stderr,
+# both of which may include sensitive source or accidentally captured
+# secrets. Restrict to the current user before any file is created.
+umask 077
+
 GITHOOKS_DIR=$(cd "$(dirname "$0")/.." && pwd)
 REPO_ROOT=$(git rev-parse --show-toplevel)
 
@@ -26,9 +31,14 @@ cd "$REPO_ROOT"
 
 REVIEWER=${1:?reviewer required (claude|codex)}
 BRANCH=${2:?branch required}
+# Commit SHA is optional for backward compatibility with manual
+# invocations, but post-commit always passes it so the review is
+# pinned to the commit that triggered the hook.
+COMMIT_SHA=${3:-HEAD}
 
 STATE_DIR="$LOCAL_AI_REVIEW_STATE_DIR"
 mkdir -p "$STATE_DIR"
+chmod 0700 "$STATE_DIR" 2>/dev/null || true
 
 LOG="$STATE_DIR/last-run.log"
 ERR="$STATE_DIR/last-error.log"
@@ -40,6 +50,7 @@ fail() { printf '[%s] ERROR: %s\n' "$(date -u +%FT%TZ)" "$*" >> "$ERR"; }
 # --- Lock acquisition ------------------------------------------
 LOCK_FILE="$STATE_DIR/.lock"
 NOW_EPOCH=$(date +%s)
+LOCK_TOKEN="$$:$NOW_EPOCH"
 
 if [ -f "$LOCK_FILE" ]; then
   LOCK_PID=""
@@ -56,21 +67,39 @@ if [ -f "$LOCK_FILE" ]; then
   fi
 fi
 
-printf '%s:%s\n' "$$" "$NOW_EPOCH" > "$LOCK_FILE"
+printf '%s\n' "$LOCK_TOKEN" > "$LOCK_FILE"
 
-cleanup_files=("$LOCK_FILE")
+# Cleanup removes auxiliary files unconditionally, but the lock file
+# only when its contents still match our token — so a successor
+# process (after timeout / takeover) cannot have its lock removed
+# by our exit trap.
+cleanup_files=()
 cleanup() {
-  local f
+  local f stored
   for f in "${cleanup_files[@]}"; do
     [ -e "$f" ] && rm -f "$f"
   done
+  if [ -f "$LOCK_FILE" ]; then
+    stored=$(cat "$LOCK_FILE" 2>/dev/null || true)
+    if [ "$stored" = "$LOCK_TOKEN" ]; then
+      rm -f "$LOCK_FILE"
+    fi
+  fi
 }
 trap cleanup EXIT
 
-log "start reviewer=$REVIEWER branch=$BRANCH"
+log "start reviewer=$REVIEWER branch=$BRANCH commit=$COMMIT_SHA"
+
+# Resolve the pinned commit once. If it has gone away (e.g. because
+# of a hard reset between commit and background launch) we cannot
+# meaningfully review.
+if ! COMMIT_SHA=$(git rev-parse --verify "${COMMIT_SHA}^{commit}" 2>/dev/null); then
+  warn "commit $COMMIT_SHA not resolvable; skipping"
+  exit 0
+fi
 
 # --- Compute merge-base ----------------------------------------
-if ! MERGE_BASE=$(git merge-base "$LOCAL_AI_REVIEW_BASE_REF" HEAD 2>/dev/null); then
+if ! MERGE_BASE=$(git merge-base "$LOCAL_AI_REVIEW_BASE_REF" "$COMMIT_SHA" 2>/dev/null); then
   warn "no merge-base with $LOCAL_AI_REVIEW_BASE_REF; skipping"
   exit 0
 fi
@@ -79,7 +108,7 @@ fi
 DIFF_FILE="$STATE_DIR/.diff.$$"
 cleanup_files+=("$DIFF_FILE")
 
-git diff "$MERGE_BASE" -- "${LOCAL_AI_REVIEW_TARGET_PATHS[@]}" > "$DIFF_FILE"
+git diff "$MERGE_BASE" "$COMMIT_SHA" -- "${LOCAL_AI_REVIEW_TARGET_PATHS[@]}" > "$DIFF_FILE"
 DIFF_SIZE=$(wc -c < "$DIFF_FILE" | tr -d ' ')
 
 if [ "$DIFF_SIZE" = "0" ]; then
@@ -113,7 +142,7 @@ if [ ! -f "$PROMPT_FILE" ]; then
   exit 1
 fi
 
-CHANGED_FILES=$(git diff --name-only "$MERGE_BASE" -- "${LOCAL_AI_REVIEW_TARGET_PATHS[@]}")
+CHANGED_FILES=$(git diff --name-only "$MERGE_BASE" "$COMMIT_SHA" -- "${LOCAL_AI_REVIEW_TARGET_PATHS[@]}")
 
 PAYLOAD_FILE="$STATE_DIR/.payload.$$"
 cleanup_files+=("$PAYLOAD_FILE")
@@ -121,6 +150,7 @@ cleanup_files+=("$PAYLOAD_FILE")
   cat "$PROMPT_FILE"
   printf '\n\n---\n\n## Context\n\n'
   printf -- '- branch: `%s`\n' "$BRANCH"
+  printf -- '- commit: `%s`\n' "$COMMIT_SHA"
   printf -- '- base: `%s` @ `%s`\n' "$LOCAL_AI_REVIEW_BASE_REF" "$MERGE_BASE"
   printf -- '- diff bytes: %s\n' "$DIFF_SIZE"
   printf -- '- diff sha256: `%s`\n\n' "$DIFF_SHA"
@@ -173,6 +203,7 @@ wait "$WATCHDOG_PID" 2>/dev/null || true
   printf '# Local AI review (%s)\n\n' "$REVIEWER"
   printf -- '- timestamp: %s\n' "$(date -u +%FT%TZ)"
   printf -- '- branch: `%s`\n' "$BRANCH"
+  printf -- '- commit: `%s`\n' "$COMMIT_SHA"
   printf -- '- merge_base: `%s`\n' "$MERGE_BASE"
   printf -- '- diff_sha256: `%s`\n' "$DIFF_SHA"
   printf -- '- reviewer_exit: %s\n\n' "$REVIEWER_STATUS"
