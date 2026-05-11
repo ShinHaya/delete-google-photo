@@ -62,6 +62,7 @@ class AccountService:
         new_profile_dir.parent.mkdir(parents=True, exist_ok=True)
 
         shutil.move(str(legacy_profile), str(new_profile_dir))
+        self._secure_profile_dir(new_profile_dir)
         logger.info(
             "Migrated legacy profile to account %s at %s",
             account.account_id,
@@ -75,6 +76,23 @@ class AccountService:
     def get_profile_dir(self, account_id: str) -> Path:
         """Get the browser profile directory for an account."""
         return self.browser_state_dir / f"account-{account_id}" / "chrome-profile"
+
+    @staticmethod
+    def _secure_profile_dir(profile_dir: Path) -> None:
+        """Create the profile directory tree with 0o700 permissions.
+
+        Both the per-account parent (``account-<id>/``) and the inner
+        ``chrome-profile/`` may hold Google session material, so they are
+        both clamped to owner-only. ``OSError`` from ``chmod`` is logged
+        but not fatal so the app stays usable on filesystems that don't
+        fully honor POSIX permissions.
+        """
+        profile_dir.mkdir(parents=True, exist_ok=True)
+        for target in (profile_dir.parent, profile_dir):
+            try:
+                target.chmod(0o700)
+            except OSError as e:
+                logger.warning("Could not set 0o700 on %s: %s", target, e)
 
     def list_accounts(self) -> list[Account]:
         """List all registered accounts."""
@@ -152,7 +170,7 @@ class AccountService:
         account = Account()
 
         profile_dir = self.get_profile_dir(account.account_id)
-        profile_dir.mkdir(parents=True, exist_ok=True)
+        self._secure_profile_dir(profile_dir)
 
         registry.accounts.append(account)
         # If this is the first account, make it active

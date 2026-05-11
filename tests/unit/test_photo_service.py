@@ -527,7 +527,9 @@ class TestPhotoService:
 
         # The DeletionResult reflects partial progress (3rd photo was
         # intercepted before it could be counted, the first 2 completed).
-        assert result.deleted_count == 3  # photo_2 was still counted before cancel check
+        assert (
+            result.deleted_count == 3
+        )  # photo_2 was still counted before cancel check
         assert result.target_count == 10
 
         # The persisted state is resumable.
