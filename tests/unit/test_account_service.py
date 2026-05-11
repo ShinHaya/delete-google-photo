@@ -31,6 +31,16 @@ class TestAccountService:
         # Is the active account (first one)
         assert svc.get_active_account_id() == account.account_id
 
+    def test_create_account_profile_dir_is_0700(self, svc: AccountService) -> None:
+        """New profile dirs must be owner-only because they hold Google sessions."""
+        account = svc.create_account()
+        profile = svc.get_profile_dir(account.account_id)
+
+        assert profile.stat().st_mode & 0o777 == 0o700
+        # Parent (per-account dir) must also be locked down — the
+        # chrome-profile is the only thing under it and shares its scope.
+        assert profile.parent.stat().st_mode & 0o777 == 0o700
+
     def test_list_accounts(self, svc: AccountService) -> None:
         assert svc.list_accounts() == []
 
@@ -125,6 +135,10 @@ class TestAccountService:
         new_profile = svc.get_profile_dir(accounts[0].account_id)
         assert (new_profile / "Default" / "Cookies").exists()
         assert (new_profile / "Default" / "Cookies").read_text() == "test"
+
+        # Migrated profile is locked down to owner-only
+        assert new_profile.stat().st_mode & 0o777 == 0o700
+        assert new_profile.parent.stat().st_mode & 0o777 == 0o700
 
     def test_no_migration_without_legacy(self, svc: AccountService) -> None:
         """No migration if there's no legacy profile."""
